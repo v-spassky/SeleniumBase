@@ -15,7 +15,7 @@ mycdp>=1.1.0
 pynose>=1.5.4
 platformdirs>=4.3.6
 typing-extensions>=4.12.2
-sbvirtualdisplay>=1.4.0
+sbvirtualdisplay @ git+https://github.com/v-spassky/sbVirtualDisplay@70b0fa9
 MarkupSafe==2.1.5;python_version<"3.9"
 MarkupSafe>=3.0.2;python_version>="3.9"
 Jinja2>=3.1.5

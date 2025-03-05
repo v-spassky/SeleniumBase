@@ -104,6 +104,12 @@ RUN ln -s python3.10 /usr/bin/python3
 RUN apt-get clean
 RUN rm -rf /var/lib/apt/lists/*
 
+#================================
+# Install git [added by Forenoid]
+#================================
+RUN apt-get update
+RUN apt-get install -y git
+
 #=====================
 # Set up SeleniumBase
 #=====================
@@ -127,6 +133,37 @@ RUN pip install pyautogui
 # Download chromedriver
 #=======================
 RUN seleniumbase get chromedriver --path
+
+#======================================
+# Set up VNC server [added by Forenoid]
+#======================================
+ENV DEBIAN_FRONTEND=noninteractive
+ENV DEBCONF_NONINTERACTIVE_SEEN=true
+ENV USER=root
+RUN apt-get update && apt-get install -y \
+tigervnc-standalone-server tigervnc-xorg-extension tigervnc-viewer
+RUN mkdir -p ~/.vnc && echo 'password' | vncpasswd -f > ~/.vnc/passwd && chmod 600 ~/.vnc/passwd
+EXPOSE 5901
+
+#===================================================
+# Set up websocket proxy for VNC [added by Forenoid]
+#===================================================
+RUN pip install websockify
+EXPOSE 5902
+
+#===========================================
+# Set up webdriver proxy [added by Forenoid]
+#===========================================
+# TODO: pin deps
+RUN pip install "fastapi[standard]" uvicorn httpx
+COPY driver_proxy /driver_proxy
+EXPOSE 4444
+
+#============================================
+# Set up browser launcher [added by Forenoid]
+#============================================
+COPY browser_launcher /browser_launcher
+EXPOSE 8000
 
 #==========================================
 # Create entrypoint and grab example tests
