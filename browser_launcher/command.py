@@ -76,4 +76,4 @@ class CDPPressKeys(SBCommand):
         sb.cdp.press_keys(self.selector, self.text)
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({self.selector}, {self.keys})'
+        return f'{self.__class__.__name__}({self.selector}, {self.text})'
