@@ -19,7 +19,7 @@ async def proxy(path: str, request: Request) -> Response:
             headers=request.headers,
             params=request.query_params,
             content=await request.body(),
-            timeout=20.0
+            timeout=60.0
         )
 
     return Response(
