@@ -3,7 +3,7 @@ set -e
 # Forenoid extras -----------------------------------------
 export DISPLAY=:1
 export USER=root
-vncserver :1 -geometry 1920x1080 -depth 24 &
+vncserver :1 -geometry "${VNC_GEOMETRY}" -depth "${VNC_DEPTH}" &
 sleep 2
 xhost +
 sleep 2
