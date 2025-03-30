@@ -88,6 +88,11 @@ RUN wget https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable
 RUN apt-get install -y ./google-chrome-stable_${CHROME_VERSION}-1_amd64.deb
 RUN rm ./google-chrome-stable_${CHROME_VERSION}-1_amd64.deb
 
+#=================================================
+# Create a folder for user data [added by Forenoid]
+#=================================================
+RUN mkdir /user_data
+
 #================
 # Install Python
 #================
