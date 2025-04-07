@@ -5,7 +5,13 @@ from mediator import mediator
 
 
 def run_seleniumbase():
-    with SB(uc=True, locale_code='en', proxy=settings.PROXY_SOCKET, user_data_dir=settings.USER_DATA_DIR_PATH) as sb:
+    with SB(
+        uc=True,
+        locale_code='en',
+        proxy=settings.PROXY_SOCKET,
+        user_data_dir=settings.USER_DATA_DIR_PATH,
+        extension_dir=','.join(f'/browser_extensions/{extension}' for extension in settings.EXTENSIONS),
+    ) as sb:
         while True:
             command = mediator.get_command()
             print(f'Received command: {command}, proceeding...')

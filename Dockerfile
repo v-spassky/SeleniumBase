@@ -116,6 +116,25 @@ RUN rm -rf /var/lib/apt/lists/*
 RUN apt-get update
 RUN apt-get install -y git
 
+#================================================
+# Download browser extensions [added by Forenoid]
+#================================================
+RUN mkdir /browser_extensions
+
+# Install uBlock Origin
+ENV UBLOCK_ORIGIN_EXTENSION_ID="cjpalhdlnbpafiamejdnhcphjbkeiagm"
+RUN wget "https://clients2.google.com/service/update2/crx?response=redirect&prodversion=${CHROME_VERSION}&x=id%3D${UBLOCK_ORIGIN_EXTENSION_ID}%26installsource%3Dondemand%26uc&acceptformat=crx2,crx3" -O /browser_extensions/ublock_origin.zip
+RUN unzip -q -o /browser_extensions/ublock_origin.zip -d /browser_extensions/ublock_origin || exit 0
+RUN rm /browser_extensions/ublock_origin.zip
+
+ARG GITHUB_PAT
+
+# Install Capsolver
+RUN git clone https://${GITHUB_PAT}@github.com/v-spassky/capsolver.git /browser_extensions/capsolver
+
+# Install Capmonster
+RUN git clone https://${GITHUB_PAT}@github.com/v-spassky/capmonster.git /browser_extensions/capmonster
+
 #=====================
 # Set up SeleniumBase
 #=====================
