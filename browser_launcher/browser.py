@@ -15,6 +15,6 @@ def run_seleniumbase():
         while True:
             command = mediator.get_command()
             print(f'Received command: {command}, proceeding...')
-            command.execute_on_sb_driver(sb)
+            command_result = command.execute_on_sb_driver(sb)
             print('Command executed.')
-            mediator.notify_done()
+            mediator.notify_done(command_result)

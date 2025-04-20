@@ -12,3 +12,7 @@ class RequestWithCSSSelector(BaseModel):
 class RequestWithCSSSelectorAndText(BaseModel):
     selector: str
     text: str
+
+
+class SBCommandResponse(BaseModel):
+    result: str
