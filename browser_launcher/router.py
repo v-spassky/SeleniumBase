@@ -1,11 +1,14 @@
+import pyautogui
 from fastapi import APIRouter
 
 from command import (
     ActivateCDPMode,
     CDPClick,
     CDPIsElementVisible,
+    CDPGet,
     CDPGetCurrentUrl,
     CDPGetPageSource,
+    CDPFindElementByText,
     CDPGetText,
     CDPPressKeys,
     Connect,
@@ -15,7 +18,14 @@ from command import (
     UCGUIHandleCaptcha,
 )
 from mediator import mediator
-from schema import RequestWithURL, RequestWithCSSSelector, RequestWithCSSSelectorAndText, SBCommandResponse
+from schema import (
+    ImageLocation,
+    RequestWithURL,
+    RequestWithCSSSelector,
+    RequestWithCSSSelectorAndText,
+    SBCommandResponse,
+    RequestWithText,
+)
 
 router = APIRouter()
 
@@ -55,6 +65,12 @@ def uc_gui_click_captcha() -> SBCommandResponse:
     return SBCommandResponse(result=str(result.raw_result))
 
 
+@router.post('/cdp_get')
+def cdp_get(request: RequestWithURL) -> SBCommandResponse:
+    result = mediator.send_and_wait_until_executed(CDPGet(request.url))
+    return SBCommandResponse(result=str(result.raw_result))
+
+
 @router.post('/cdp_click')
 def cdp_click(request: RequestWithCSSSelector) -> SBCommandResponse:
     result = mediator.send_and_wait_until_executed(CDPClick(request.selector))
@@ -89,3 +105,19 @@ def cdp_get_current_url() -> SBCommandResponse:
 def cdp_get_page_source() -> SBCommandResponse:
     result = mediator.send_and_wait_until_executed(CDPGetPageSource())
     return SBCommandResponse(result=str(result.raw_result))
+
+
+@router.post('/cdp_is_text_on_page')
+def cdp_is_text_on_page(request: RequestWithText) -> SBCommandResponse:
+    result = mediator.send_and_wait_until_executed(CDPFindElementByText(request.text))
+    return SBCommandResponse(result=str(result.raw_result))
+
+
+@router.get('/locate_on_screen/recaptcha_check_mark')
+def locate_recaptcha_check_mark() -> ImageLocation:
+    try:
+        bounding_box = pyautogui.locateOnScreen('images/recaptcha_check_mark.png', confidence=0.8)
+        center = pyautogui.center(bounding_box)
+        return ImageLocation(located=True, x=int(center.x), y=int(center.y))
+    except pyautogui.ImageNotFoundException:
+        return ImageLocation(located=False, x=None, y=None)

@@ -9,6 +9,10 @@ class RequestWithCSSSelector(BaseModel):
     selector: str
 
 
+class RequestWithText(BaseModel):
+    text: str
+
+
 class RequestWithCSSSelectorAndText(BaseModel):
     selector: str
     text: str
@@ -16,3 +20,9 @@ class RequestWithCSSSelectorAndText(BaseModel):
 
 class SBCommandResponse(BaseModel):
     result: str
+
+
+class ImageLocation(BaseModel):
+    located: bool
+    x: int | None
+    y: int | None

@@ -159,6 +159,12 @@ RUN pip install pyautogui
 #=======================
 RUN seleniumbase get chromedriver --path
 
+#=====================================================
+# Install tools for image handling [added by Forenoid]
+#=====================================================
+RUN apt install -y gnome-screenshot
+RUN pip install opencv-python
+
 #======================================
 # Set up VNC server [added by Forenoid]
 #======================================

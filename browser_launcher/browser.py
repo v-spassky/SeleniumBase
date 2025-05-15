@@ -1,6 +1,7 @@
 from seleniumbase import SB
 
 import settings
+from command import SBCommandResult
 from mediator import mediator
 
 
@@ -15,6 +16,11 @@ def run_seleniumbase():
         while True:
             command = mediator.get_command()
             print(f'Received command: {command}, proceeding...')
-            command_result = command.execute_on_sb_driver(sb)
-            print('Command executed.')
-            mediator.notify_done(command_result)
+            try:
+                command_result = command.execute_on_sb_driver(sb)
+                print('Command executed.')
+                mediator.notify_done(command_result)
+            except Exception as error:
+                print(f'Error executing command: {error}')
+                command_result = SBCommandResult.error()
+                mediator.notify_done(command_result)

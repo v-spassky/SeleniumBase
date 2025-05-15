@@ -7,8 +7,12 @@ class SBCommandResult:
     def __init__(self, raw_result) -> None:
         self.raw_result = raw_result
 
+    @classmethod
+    def error(cls) -> 'SBCommandResult':
+        return cls('error')
+
     def __repr__(self) -> str:
-        return f'SBCommandResult({self.raw_result})'
+        return f'SBCommandResult("{self.raw_result}")'
 
 
 class SBCommand(ABC):
@@ -30,7 +34,7 @@ class ActivateCDPMode(SBCommand):
         return SBCommandResult(result)
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({self.url})'
+        return f'{self.__class__.__name__}("{self.url}")'
 
 
 class Connect(SBCommand):
@@ -68,6 +72,19 @@ class UCGUIClickCaptcha(SBCommand):
         return SBCommandResult(result)
 
 
+class CDPGet(SBCommand):
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+
+    def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
+        result = sb.cdp.get(self.url)
+        return SBCommandResult(result)
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}("{self.url}")'
+
+
 class CDPClick(SBCommand):
 
     def __init__(self, selector: str) -> None:
@@ -78,7 +95,7 @@ class CDPClick(SBCommand):
         return SBCommandResult(result)
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({self.selector})'
+        return f'{self.__class__.__name__}("{self.selector}")'
 
 
 class CDPPressKeys(SBCommand):
@@ -92,7 +109,7 @@ class CDPPressKeys(SBCommand):
         return SBCommandResult(result)
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({self.selector}, {self.text})'
+        return f'{self.__class__.__name__}("{self.selector}", "{self.text}")'
 
 
 class CDPGetText(SBCommand):
@@ -105,7 +122,7 @@ class CDPGetText(SBCommand):
         return SBCommandResult(result)
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({self.selector})'
+        return f'{self.__class__.__name__}("{self.selector}")'
 
 
 class CDPIsElementVisible(SBCommand):
@@ -118,7 +135,7 @@ class CDPIsElementVisible(SBCommand):
         return SBCommandResult(result)
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({self.selector})'
+        return f'{self.__class__.__name__}("{self.selector}")'
 
 
 class CDPGetCurrentUrl(SBCommand):
@@ -133,3 +150,19 @@ class CDPGetPageSource(SBCommand):
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
         result = sb.cdp.get_page_source()
         return SBCommandResult(result)
+
+
+class CDPFindElementByText(SBCommand):
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
+        try:
+            result = sb.cdp.find_element_by_text(self.text, timeout=0.1)
+        except Exception:
+            result = None
+        return SBCommandResult(result)
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}("{self.text}")'
