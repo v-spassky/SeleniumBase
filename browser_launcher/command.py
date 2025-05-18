@@ -58,6 +58,13 @@ class Disconnect(SBCommand):
         return SBCommandResult(result)
 
 
+class IsConnected(SBCommand):
+
+    def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
+        result = sb.is_connected()
+        return SBCommandResult(result)
+
+
 class UCGUIHandleCaptcha(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:

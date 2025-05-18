@@ -13,6 +13,7 @@ from command import (
     CDPPressKeys,
     Connect,
     Disconnect,
+    IsConnected,
     Reconnect,
     UCGUIClickCaptcha,
     UCGUIHandleCaptcha,
@@ -50,6 +51,12 @@ def reconnect() -> SBCommandResponse:
 @router.post('/disconnect')
 def disconnect() -> SBCommandResponse:
     result = mediator.send_and_wait_until_executed(Disconnect())
+    return SBCommandResponse(result=str(result.raw_result))
+
+
+@router.post('/is_connected')
+def is_connected() -> SBCommandResponse:
+    result = mediator.send_and_wait_until_executed(IsConnected())
     return SBCommandResponse(result=str(result.raw_result))
 
 
