@@ -128,10 +128,10 @@ def cdp_gui_click_coordinates(request: RequestWithCoordinates) -> SBCommandRespo
     return SBCommandResponse(result=str(result.raw_result))
 
 
-@router.get('/locate_on_screen/recaptcha_check_mark')
-def locate_recaptcha_check_mark() -> ImageLocation:
+@router.get('/locate_on_screen/{image_name}')
+def locate_on_screen(image_name: str) -> ImageLocation:
     try:
-        bounding_box = pyautogui.locateOnScreen('images/recaptcha_check_mark.png', confidence=0.8)
+        bounding_box = pyautogui.locateOnScreen(f'images/{image_name}.png', confidence=0.8)
         center = pyautogui.center(bounding_box)
         return ImageLocation(located=True, x=int(center.x), y=int(center.y))
     except pyautogui.ImageNotFoundException:
