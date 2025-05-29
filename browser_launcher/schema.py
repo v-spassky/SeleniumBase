@@ -18,6 +18,11 @@ class RequestWithCSSSelectorAndText(BaseModel):
     text: str
 
 
+class RequestWithCoordinates(BaseModel):
+    x: int
+    y: int
+
+
 class SBCommandResponse(BaseModel):
     result: str
 

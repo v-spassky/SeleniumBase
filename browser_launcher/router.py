@@ -8,6 +8,7 @@ from command import (
     CDPGet,
     CDPGetCurrentUrl,
     CDPGetPageSource,
+    CDPGUIClickCoordinates,
     CDPFindElementByText,
     CDPGetText,
     CDPPressKeys,
@@ -21,6 +22,7 @@ from command import (
 from mediator import mediator
 from schema import (
     ImageLocation,
+    RequestWithCoordinates,
     RequestWithURL,
     RequestWithCSSSelector,
     RequestWithCSSSelectorAndText,
@@ -117,6 +119,12 @@ def cdp_get_page_source() -> SBCommandResponse:
 @router.post('/cdp_is_text_on_page')
 def cdp_is_text_on_page(request: RequestWithText) -> SBCommandResponse:
     result = mediator.send_and_wait_until_executed(CDPFindElementByText(request.text))
+    return SBCommandResponse(result=str(result.raw_result))
+
+
+@router.post('/cdp_gui_click_coordinates')
+def cdp_gui_click_coordinates(request: RequestWithCoordinates) -> SBCommandResponse:
+    result = mediator.send_and_wait_until_executed(CDPGUIClickCoordinates(request.x, request.y))
     return SBCommandResponse(result=str(result.raw_result))
 
 

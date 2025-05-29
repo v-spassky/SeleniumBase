@@ -105,6 +105,20 @@ class CDPClick(SBCommand):
         return f'{self.__class__.__name__}("{self.selector}")'
 
 
+class CDPGUIClickCoordinates(SBCommand):
+
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+
+    def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
+        result = sb.cdp.gui_click_x_y(self.x, self.y)
+        return SBCommandResult(result)
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}({self.x}, {self.y})'
+
+
 class CDPPressKeys(SBCommand):
 
     def __init__(self, selector: str, text: str) -> None:
