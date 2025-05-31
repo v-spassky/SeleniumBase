@@ -135,6 +135,9 @@ RUN git clone https://${GITHUB_PAT}@github.com/v-spassky/capsolver.git /browser_
 # Install Capmonster
 RUN git clone https://${GITHUB_PAT}@github.com/v-spassky/capmonster.git /browser_extensions/capmonster
 
+# Install Nopecha
+RUN git clone https://${GITHUB_PAT}@github.com/v-spassky/nopecha.git /browser_extensions/nopecha
+
 #=====================
 # Set up SeleniumBase
 #=====================
