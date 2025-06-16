@@ -38,6 +38,7 @@ driver.get("https://google.com/ncr")
 """
 import os
 import sys
+from seleniumbase.core import sb_driver
 
 
 class DriverContext():
@@ -139,7 +140,7 @@ def Driver(
     pls=None,  # Shortcut / Duplicate of "page_load_strategy".
     cft=None,  # Use "Chrome for Testing"
     chs=None,  # Use "Chrome-Headless-Shell"
-):
+) -> sb_driver.DriverMethods:
     """
     * SeleniumBase Driver as a Python Context Manager or a returnable object. *
 
@@ -781,6 +782,23 @@ def Driver(
             swiftshader = False
     if locale is not None and locale_code is None:
         locale_code = locale
+    if locale_code is None:
+        if '--locale="' in arg_join:
+            locale_code = (
+                arg_join.split('--locale="')[1].split('"')[0]
+            )
+        elif '--locale=' in arg_join:
+            locale_code = (
+                arg_join.split('--locale=')[1].split(' ')[0]
+            )
+        elif '--locale-code="' in arg_join:
+            locale_code = (
+                arg_join.split('--locale-code="')[1].split('"')[0]
+            )
+        elif '--locale-code=' in arg_join:
+            locale_code = (
+                arg_join.split('--locale-code=')[1].split(' ')[0]
+            )
     if ad_block is not None and ad_block_on is None:
         ad_block_on = ad_block
     if ad_block_on is None:

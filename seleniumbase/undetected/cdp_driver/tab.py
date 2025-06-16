@@ -1,8 +1,12 @@
 from __future__ import annotations
 import asyncio
+import base64
+import datetime
 import logging
 import pathlib
+import urllib.parse
 import warnings
+from seleniumbase import config as sb_config
 from typing import Dict, List, Union, Optional, Tuple
 from . import browser as cdp_browser
 from . import element
@@ -133,6 +137,14 @@ class Tab(Connection):
         self.browser = browser
         self._dom = None
         self._window_id = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.aclose()
+        if exc_type and exc_val:
+            raise exc_type(exc_val)
 
     @property
     def inspector_url(self):
@@ -326,6 +338,7 @@ class Tab(Connection):
         url="about:blank",
         new_tab: bool = False,
         new_window: bool = False,
+        **kwargs,
     ):
         """
         Top level get. Utilizes the first tab to retrieve the given url.
@@ -345,11 +358,25 @@ class Tab(Connection):
         if new_window and not new_tab:
             new_tab = True
         if new_tab:
-            return await self.browser.get(url, new_tab, new_window)
+            if hasattr(sb_config, "incognito") and sb_config.incognito:
+                return await self.browser.get(
+                    url, new_tab=False, new_window=True, **kwargs
+                )
+            else:
+                return await self.browser.get(
+                    url, new_tab, new_window, **kwargs
+                )
         else:
-            frame_id, loader_id, *_ = await self.send(cdp.page.navigate(url))
-            await self
-            return self
+            if not kwargs:
+                frame_id, loader_id, *_ = await self.send(
+                    cdp.page.navigate(url)
+                )
+                await self
+                return self
+            else:
+                return await self.browser.get(
+                    url, new_tab, new_window, **kwargs
+                )
 
     async def query_selector_all(
         self,
@@ -466,6 +493,8 @@ class Tab(Connection):
         search_id, nresult = await self.send(
             cdp.dom.perform_search(text, True)
         )
+        if not nresult:
+            return []
         if nresult:
             node_ids = await self.send(
                 cdp.dom.get_search_results(search_id, 0, nresult)
@@ -557,6 +586,8 @@ class Tab(Connection):
         search_id, nresult = await self.send(
             cdp.dom.perform_search(text, True)
         )
+        if not nresult:
+            return
         node_ids = await self.send(
             cdp.dom.get_search_results(search_id, 0, nresult)
         )
@@ -852,6 +883,8 @@ class Tab(Connection):
             await self.send(
                 cdp.target.close_target(target_id=self.target.target_id)
             )
+            await self.aclose()
+            await asyncio.sleep(0.1)
 
     async def get_window(self) -> Tuple[
         cdp.browser.WindowID, cdp.browser.Bounds
@@ -1132,9 +1165,6 @@ class Tab(Connection):
         :return: The path/filename of the saved screenshot.
         :rtype: str
         """
-        import urllib.parse
-        import datetime
-
         await self.sleep()  # Update the target's URL
         path = None
         if format.lower() in ["jpg", "jpeg"]:
@@ -1165,8 +1195,40 @@ class Tab(Connection):
                 "Most possible cause is the page "
                 "has not finished loading yet."
             )
-        import base64
+        data_bytes = base64.b64decode(data)
+        if not path:
+            raise RuntimeError("Invalid filename or path: '%s'" % filename)
+        path.write_bytes(data_bytes)
+        return str(path)
 
+    async def print_to_pdf(
+        self,
+        filename: Optional[PathLike] = "auto",
+    ) -> str:
+        """
+        Saves a webpage as a PDF.
+        :param filename: uses this as the save path
+        :type filename: PathLike
+        :return: The path/filename of the saved screenshot.
+        :rtype: str
+        """
+        await self.sleep()  # Update the target's URL
+        path = None
+        ext = ".pdf"
+        if not filename or filename == "auto":
+            parsed = urllib.parse.urlparse(self.target.url)
+            parts = parsed.path.split("/")
+            last_part = parts[-1]
+            last_part = last_part.rsplit("?", 1)[0]
+            dt_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            candidate = f"{parsed.hostname}__{last_part}_{dt_str}"
+            path = pathlib.Path(candidate + ext)  # noqa
+        else:
+            path = pathlib.Path(filename)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data, _ = await self.send(cdp.page.print_to_pdf())
+        if not data:
+            raise ProtocolException("Could not save PDF.")
         data_bytes = base64.b64decode(data)
         if not path:
             raise RuntimeError("Invalid filename or path: '%s'" % filename)

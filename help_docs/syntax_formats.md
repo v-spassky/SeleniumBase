@@ -1033,6 +1033,7 @@ async def main():
     time.sleep(1)
     await element.send_keys_async("Boston")
     time.sleep(2)
+    driver.stop()
 
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
@@ -1072,9 +1073,10 @@ def main():
     for i in range(8):
         sb.scroll_down(50)
         sb.sleep(0.2)
-    cards = sb.select_all('h2[data-automation*="product-list-card"]')
+    cards = sb.select_all('span[data-automation*="product-list-card"]')
     for card in cards:
         print("* %s" % card.text)
+    sb.driver.stop()
 
 
 if __name__ == "__main__":

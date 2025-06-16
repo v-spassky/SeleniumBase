@@ -1,4 +1,5 @@
 import fasteners
+import json
 import logging
 import os
 import platform
@@ -107,7 +108,9 @@ def make_driver_executable_if_not(driver_path):
         shared_utils.make_executable(driver_path)
 
 
-def extend_driver(driver, proxy_auth=False, use_uc=True):
+def extend_driver(
+    driver, proxy_auth=False, use_uc=True, recorder_ext=False
+):
     # Extend the driver with new methods
     driver.default_find_element = driver.find_element
     driver.default_find_elements = driver.find_elements
@@ -233,6 +236,14 @@ def extend_driver(driver, proxy_auth=False, use_uc=True):
     driver.switch_to_tab = DM.switch_to_tab
     driver.switch_to_frame = DM.switch_to_frame
     driver.reset_window_size = DM.reset_window_size
+    if recorder_ext:
+        from seleniumbase.js_code.recorder_js import recorder_js
+        recorder_code = (
+            """window.onload = function() { %s };""" % recorder_js
+        )
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument", {"source": recorder_code}
+        )
     if hasattr(driver, "proxy"):
         driver.set_wire_proxy = DM.set_wire_proxy
     if proxy_auth:
@@ -403,7 +414,7 @@ def uc_special_open_if_cf(
                 special = True
                 if status_str == "403" or status_str == "429":
                     time.sleep(0.06)  # Forbidden / Blocked! (Wait first!)
-        if special:
+        if special and not hasattr(driver, "cdp_base"):
             time.sleep(0.05)
             with driver:
                 driver.execute_script('window.open("%s","_blank");' % url)
@@ -471,9 +482,12 @@ def uc_open_with_tab(driver, url):
         time.sleep(0.3)
         return
     if (url.startswith("http:") or url.startswith("https:")):
-        with driver:
-            driver.execute_script('window.open("%s","_blank");' % url)
-            driver.close()
+        if not hasattr(driver, "cdp_base"):
+            with driver:
+                driver.execute_script('window.open("%s","_blank");' % url)
+                driver.close()
+        else:
+            driver.cdp.open(url)
         page_actions.switch_to_window(driver, driver.window_handles[-1], 2)
     else:
         driver.default_get(url)  # The original one
@@ -491,9 +505,12 @@ def uc_open_with_reconnect(driver, url, reconnect_time=None):
         reconnect_time = constants.UC.RECONNECT_TIME
     if (url.startswith("http:") or url.startswith("https:")):
         script = 'window.open("%s","_blank");' % url
-        driver.execute_script(script)
-        time.sleep(0.05)
-        driver.close()
+        if not hasattr(driver, "cdp_base"):
+            driver.execute_script(script)
+            time.sleep(0.05)
+            driver.close()
+        else:
+            driver.cdp.open(url)
         if reconnect_time == "disconnect":
             driver.disconnect()
             time.sleep(0.008)
@@ -514,7 +531,8 @@ def uc_open_with_reconnect(driver, url, reconnect_time=None):
     return None
 
 
-def uc_open_with_cdp_mode(driver, url=None):
+def uc_open_with_cdp_mode(driver, url=None, **kwargs):
+    """Activate CDP Mode with the URL and kwargs."""
     import asyncio
     from seleniumbase.undetected.cdp_driver import cdp_util
 
@@ -542,15 +560,35 @@ def uc_open_with_cdp_mode(driver, url=None):
     if url_protocol not in ["about", "data", "chrome"]:
         safe_url = False
 
+    if (
+        hasattr(driver, "_is_using_cdp")
+        and driver._is_using_cdp
+        and hasattr(driver, "cdp")
+        and driver.cdp
+        and hasattr(driver.cdp, "loop")
+    ):
+        # CDP Mode was already initialized
+        driver.cdp.open(url, **kwargs)
+        if not safe_url:
+            time.sleep(constants.UC.CDP_MODE_OPEN_WAIT)
+            if IS_WINDOWS:
+                time.sleep(constants.UC.EXTRA_WINDOWS_WAIT)
+        else:
+            time.sleep(0.012)
+        return
+
     headless = False
     headed = None
     xvfb = None
+    binary_location = None
     if hasattr(sb_config, "headless"):
         headless = sb_config.headless
     if hasattr(sb_config, "headed"):
         headed = sb_config.headed
     if hasattr(sb_config, "xvfb"):
         xvfb = sb_config.xvfb
+    if hasattr(sb_config, "binary_location"):
+        binary_location = sb_config.binary_location
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -561,6 +599,7 @@ def uc_open_with_cdp_mode(driver, url=None):
             headless=headless,
             headed=headed,
             xvfb=xvfb,
+            browser_executable_path=binary_location,
         )
     )
     loop.run_until_complete(driver.cdp_base.wait(0))
@@ -602,7 +641,9 @@ def uc_open_with_cdp_mode(driver, url=None):
                 loop.run_until_complete(page_tab.activate())
 
     loop.run_until_complete(driver.cdp_base.update_targets())
-    page = loop.run_until_complete(driver.cdp_base.get(url))
+    page = loop.run_until_complete(
+        driver.cdp_base.get(url, **kwargs)
+    )
     with gui_lock:
         with suppress(Exception):
             shared_utils.make_writable(constants.MultiBrowser.PYAUTOGUILOCK)
@@ -639,6 +680,8 @@ def uc_open_with_cdp_mode(driver, url=None):
     cdp.go_forward = CDPM.go_forward
     cdp.get_navigation_history = CDPM.get_navigation_history
     cdp.tile_windows = CDPM.tile_windows
+    cdp.grant_permissions = CDPM.grant_permissions
+    cdp.grant_all_permissions = CDPM.grant_all_permissions
     cdp.get_all_cookies = CDPM.get_all_cookies
     cdp.set_all_cookies = CDPM.set_all_cookies
     cdp.save_cookies = CDPM.save_cookies
@@ -662,6 +705,7 @@ def uc_open_with_cdp_mode(driver, url=None):
     cdp.press_keys = CDPM.press_keys
     cdp.type = CDPM.type
     cdp.set_value = CDPM.set_value
+    cdp.submit = CDPM.submit
     cdp.evaluate = CDPM.evaluate
     cdp.js_dumps = CDPM.js_dumps
     cdp.maximize = CDPM.maximize
@@ -670,6 +714,8 @@ def uc_open_with_cdp_mode(driver, url=None):
     cdp.set_window_rect = CDPM.set_window_rect
     cdp.reset_window_size = CDPM.reset_window_size
     cdp.set_locale = CDPM.set_locale
+    cdp.set_local_storage_item = CDPM.set_local_storage_item
+    cdp.set_session_storage_item = CDPM.set_session_storage_item
     cdp.set_attributes = CDPM.set_attributes
     cdp.gui_press_key = CDPM.gui_press_key
     cdp.gui_press_keys = CDPM.gui_press_keys
@@ -678,10 +724,20 @@ def uc_open_with_cdp_mode(driver, url=None):
     cdp.gui_click_element = CDPM.gui_click_element
     cdp.gui_drag_drop_points = CDPM.gui_drag_drop_points
     cdp.gui_drag_and_drop = CDPM.gui_drag_and_drop
+    cdp.gui_click_and_hold = CDPM.gui_click_and_hold
     cdp.gui_hover_x_y = CDPM.gui_hover_x_y
     cdp.gui_hover_element = CDPM.gui_hover_element
     cdp.gui_hover_and_click = CDPM.gui_hover_and_click
     cdp.internalize_links = CDPM.internalize_links
+    cdp.open_new_window = CDPM.open_new_window
+    cdp.switch_to_window = CDPM.switch_to_window
+    cdp.switch_to_newest_window = CDPM.switch_to_newest_window
+    cdp.open_new_tab = CDPM.open_new_tab
+    cdp.switch_to_tab = CDPM.switch_to_tab
+    cdp.switch_to_newest_tab = CDPM.switch_to_newest_tab
+    cdp.close_active_tab = CDPM.close_active_tab
+    cdp.get_active_tab = CDPM.get_active_tab
+    cdp.get_tabs = CDPM.get_tabs
     cdp.get_window = CDPM.get_window
     cdp.get_element_attributes = CDPM.get_element_attributes
     cdp.get_element_attribute = CDPM.get_element_attribute
@@ -696,6 +752,8 @@ def uc_open_with_cdp_mode(driver, url=None):
     cdp.get_user_agent = CDPM.get_user_agent
     cdp.get_cookie_string = CDPM.get_cookie_string
     cdp.get_locale_code = CDPM.get_locale_code
+    cdp.get_local_storage_item = CDPM.get_local_storage_item
+    cdp.get_session_storage_item = CDPM.get_session_storage_item
     cdp.get_text = CDPM.get_text
     cdp.get_title = CDPM.get_title
     cdp.get_page_title = CDPM.get_title
@@ -755,6 +813,7 @@ def uc_open_with_cdp_mode(driver, url=None):
     cdp.scroll_up = CDPM.scroll_up
     cdp.scroll_down = CDPM.scroll_down
     cdp.save_screenshot = CDPM.save_screenshot
+    cdp.print_to_pdf = CDPM.print_to_pdf
     cdp.page = page  # async world
     cdp.driver = driver.cdp_base  # async world
     cdp.tab = cdp.page  # shortcut (original)
@@ -771,8 +830,8 @@ def uc_open_with_cdp_mode(driver, url=None):
     driver._is_using_cdp = True
 
 
-def uc_activate_cdp_mode(driver, url=None):
-    uc_open_with_cdp_mode(driver, url=url)
+def uc_activate_cdp_mode(driver, url=None, **kwargs):
+    uc_open_with_cdp_mode(driver, url=url, **kwargs)
 
 
 def uc_open_with_disconnect(driver, url, timeout=None):
@@ -1279,8 +1338,17 @@ def _uc_gui_click_captcha(
                     and driver.is_element_present("form div:not(:has(*))")
                 ):
                     frame = "form div:not(:has(*))"
+                elif (
+                    driver.is_element_present('[src*="/turnstile/"]')
+                    and driver.is_element_present(
+                        "body > div#check > div:not([class])"
+                    )
+                ):
+                    frame = "body > div#check > div:not([class])"
                 elif driver.is_element_present(".cf-turnstile-wrapper"):
                     frame = ".cf-turnstile-wrapper"
+                elif driver.is_element_present('[class="cf-turnstile"]'):
+                    frame = '[class="cf-turnstile"]'
                 elif driver.is_element_present(
                     '[data-callback="onCaptchaSuccess"]'
                 ):
@@ -1312,13 +1380,34 @@ def _uc_gui_click_captcha(
                     driver.execute_script(script)
             elif (
                 driver.is_element_present("form")
-                and driver.is_element_present(
-                    "form.turnstile #turnstile-widget > div:not([class])"
+                and (
+                    driver.is_element_present('form div[style*="center"]')
+                    or driver.is_element_present('form div[style*="right"]')
                 )
             ):
                 script = (
                     """var $elements = document.querySelectorAll(
-                    'form.turnstile #turnstile-widget');
+                    'form[style], form div[style]');
+                    var index = 0, length = $elements.length;
+                    for(; index < length; index++){
+                    the_style = $elements[index].getAttribute('style');
+                    new_style = the_style.replaceAll('center', 'left');
+                    new_style = new_style.replaceAll('right', 'left');
+                    $elements[index].setAttribute('style', new_style);}"""
+                )
+                if __is_cdp_swap_needed(driver):
+                    driver.cdp.evaluate(script)
+                else:
+                    driver.execute_script(script)
+            elif (
+                driver.is_element_present("form")
+                and driver.is_element_present(
+                    'form [id*="turnstile"] > div:not([class])'
+                )
+            ):
+                script = (
+                    """var $elements = document.querySelectorAll(
+                    'form [id*="turnstile"]');
                     var index = 0, length = $elements.length;
                     for(; index < length; index++){
                     $elements[index].setAttribute('align', 'left');}"""
@@ -1568,6 +1657,17 @@ def _uc_gui_handle_captcha_(driver, frame="iframe", ctype=None):
                 ):
                     frame = "form div:not(:has(*))"
                     tab_up_first = True
+                elif (
+                    driver.is_element_present('[src*="/turnstile/"]')
+                    and driver.is_element_present(
+                        "body > div#check > div:not([class])"
+                    )
+                ):
+                    frame = "body > div#check > div:not([class])"
+                elif driver.is_element_present(".cf-turnstile-wrapper"):
+                    frame = ".cf-turnstile-wrapper"
+                elif driver.is_element_present('[class="cf-turnstile"]'):
+                    frame = '[class="cf-turnstile"]'
                 else:
                     return
         else:
@@ -1840,6 +1940,7 @@ def _add_chrome_proxy_extension(
     proxy_string,
     proxy_user,
     proxy_pass,
+    proxy_scheme,
     proxy_bypass_list=None,
     zip_it=True,
     multi_proxy=False,
@@ -1858,7 +1959,11 @@ def _add_chrome_proxy_extension(
             proxy_zip_lock = fasteners.InterProcessLock(PROXY_ZIP_LOCK)
             with proxy_zip_lock:
                 proxy_helper.create_proxy_ext(
-                    proxy_string, proxy_user, proxy_pass, bypass_list
+                    proxy_string,
+                    proxy_user,
+                    proxy_pass,
+                    proxy_scheme,
+                    bypass_list,
                 )
                 proxy_zip = proxy_helper.PROXY_ZIP_PATH
                 chrome_options.add_extension(proxy_zip)
@@ -1869,6 +1974,7 @@ def _add_chrome_proxy_extension(
                     proxy_string,
                     proxy_user,
                     proxy_pass,
+                    proxy_scheme,
                     bypass_list,
                     zip_it=False,
                 )
@@ -1887,7 +1993,11 @@ def _add_chrome_proxy_extension(
                     _set_proxy_filenames()
                 if not os.path.exists(proxy_helper.PROXY_ZIP_PATH):
                     proxy_helper.create_proxy_ext(
-                        proxy_string, proxy_user, proxy_pass, bypass_list
+                        proxy_string,
+                        proxy_user,
+                        proxy_pass,
+                        proxy_scheme,
+                        bypass_list,
                     )
                 proxy_zip = proxy_helper.PROXY_ZIP_PATH
                 chrome_options.add_extension(proxy_zip)
@@ -1903,6 +2013,7 @@ def _add_chrome_proxy_extension(
                         proxy_string,
                         proxy_user,
                         proxy_pass,
+                        proxy_scheme,
                         bypass_list,
                         zip_it=False,
                     )
@@ -1977,6 +2088,7 @@ def _set_chrome_options(
     proxy_auth,
     proxy_user,
     proxy_pass,
+    proxy_scheme,
     proxy_bypass_list,
     proxy_pac_url,
     multi_proxy,
@@ -2033,7 +2145,9 @@ def _set_chrome_options(
     prefs["download.default_directory"] = downloads_path
     prefs["download.directory_upgrade"] = True
     prefs["download.prompt_for_download"] = False
+    prefs["download_bubble.partial_view_enabled"] = False
     prefs["credentials_enable_service"] = False
+    prefs["autofill.credit_card_enabled"] = False
     prefs["local_discovery.notifications_enabled"] = False
     prefs["safebrowsing.enabled"] = False  # Prevent PW "data breach" pop-ups
     prefs["safebrowsing.disable_download_protection"] = True
@@ -2059,6 +2173,9 @@ def _set_chrome_options(
     prefs["profile.default_content_setting_values.automatic_downloads"] = 1
     if locale_code:
         prefs["intl.accept_languages"] = locale_code
+        sb_config._cdp_locale = locale_code
+    else:
+        sb_config._cdp_locale = None
     if block_images:
         prefs["profile.managed_default_content_settings.images"] = 2
     if disable_cookies:
@@ -2069,6 +2186,15 @@ def _set_chrome_options(
         prefs["enable_do_not_track"] = True
     if external_pdf:
         prefs["plugins.always_open_pdf_externally"] = True
+        pdf_settings = {
+            "recentDestinations": [
+                {"id": "Save as PDF", "origin": "local", "account": ""}
+            ],
+            "selectedDestinationId": "Save as PDF",
+            "version": 2,
+        }
+        app_state = "printing.print_preview_sticky_settings.appState"
+        prefs[app_state] = json.dumps(pdf_settings)
     if proxy_string or proxy_pac_url:
         # Implementation of https://stackoverflow.com/q/65705775/7058266
         prefs["webrtc.ip_handling_policy"] = "disable_non_proxied_udp"
@@ -2271,6 +2397,7 @@ def _set_chrome_options(
                 proxy_string,
                 proxy_user,
                 proxy_pass,
+                proxy_scheme,
                 proxy_bypass_list,
                 zip_it,
                 multi_proxy,
@@ -2290,6 +2417,7 @@ def _set_chrome_options(
                 None,
                 proxy_user,
                 proxy_pass,
+                proxy_scheme,
                 proxy_bypass_list,
                 zip_it,
                 multi_proxy,
@@ -2431,6 +2559,7 @@ def _set_chrome_options(
     included_disabled_features.append("PrivacySandboxSettings4")
     included_disabled_features.append("SidePanelPinning")
     included_disabled_features.append("UserAgentClientHint")
+    included_disabled_features.append("DisableLoadExtensionCommandLineSwitch")
     for item in extra_disabled_features:
         if item not in included_disabled_features:
             included_disabled_features.append(item)
@@ -2708,6 +2837,8 @@ def get_driver(
     if headless2 and browser_name == constants.Browser.FIREFOX:
         headless2 = False  # Only for Chromium
         headless = True
+    if binary_location and isinstance(binary_location, str):
+        binary_location = binary_location.strip()
     if (
         is_using_uc(undetectable, browser_name)
         and binary_location
@@ -2901,7 +3032,10 @@ def get_driver(
     proxy_auth = False
     proxy_user = None
     proxy_pass = None
+    proxy_scheme = "http"
     if proxy_string:
+        # (The code below was for the Chrome 137 extension fix)
+        # sb_config._cdp_proxy = proxy_string
         username_and_password = None
         if "@" in proxy_string:
             # Format => username:password@hostname:port
@@ -2924,7 +3058,9 @@ def get_driver(
                     "that has authentication! (If using a proxy server "
                     "without auth, Chrome, Edge, or Firefox may be used.)"
                 )
-        proxy_string = proxy_helper.validate_proxy_string(proxy_string)
+        proxy_string, proxy_scheme = proxy_helper.validate_proxy_string(
+            proxy_string, keep_scheme=True
+        )
         if proxy_string and proxy_user and proxy_pass:
             proxy_auth = True
     elif proxy_pac_url:
@@ -3013,6 +3149,7 @@ def get_driver(
             proxy_auth,
             proxy_user,
             proxy_pass,
+            proxy_scheme,
             proxy_bypass_list,
             proxy_pac_url,
             multi_proxy,
@@ -3073,6 +3210,7 @@ def get_driver(
             proxy_auth,
             proxy_user,
             proxy_pass,
+            proxy_scheme,
             proxy_bypass_list,
             proxy_pac_url,
             multi_proxy,
@@ -3133,6 +3271,7 @@ def get_remote_driver(
     proxy_auth,
     proxy_user,
     proxy_pass,
+    proxy_scheme,
     proxy_bypass_list,
     proxy_pac_url,
     multi_proxy,
@@ -3243,7 +3382,6 @@ def get_remote_driver(
         from seleniumbase.core import capabilities_parser
         desired_caps = capabilities_parser.get_desired_capabilities(cap_file)
     if cap_string:
-        import json
         try:
             extra_caps = json.loads(str(cap_string))
         except Exception as e:
@@ -3274,6 +3412,7 @@ def get_remote_driver(
             proxy_auth,
             proxy_user,
             proxy_pass,
+            proxy_scheme,
             proxy_bypass_list,
             proxy_pac_url,
             multi_proxy,
@@ -3450,6 +3589,7 @@ def get_remote_driver(
             proxy_auth,
             proxy_user,
             proxy_pass,
+            proxy_scheme,
             proxy_bypass_list,
             proxy_pac_url,
             multi_proxy,
@@ -3571,6 +3711,7 @@ def get_local_driver(
     proxy_auth,
     proxy_user,
     proxy_pass,
+    proxy_scheme,
     proxy_bypass_list,
     proxy_pac_url,
     multi_proxy,
@@ -3865,6 +4006,7 @@ def get_local_driver(
             "download.directory_upgrade": True,
             "download.prompt_for_download": False,
             "credentials_enable_service": False,
+            "autofill.credit_card_enabled": False,
             "local_discovery.notifications_enabled": False,
             "safebrowsing.disable_download_protection": True,
             "safebrowsing.enabled": False,  # Prevent PW "data breach" pop-ups
@@ -4235,6 +4377,7 @@ def get_local_driver(
                     proxy_string,
                     proxy_user,
                     proxy_pass,
+                    proxy_scheme,
                     proxy_bypass_list,
                     zip_it=True,
                     multi_proxy=multi_proxy,
@@ -4251,6 +4394,7 @@ def get_local_driver(
                     None,
                     proxy_user,
                     proxy_pass,
+                    proxy_scheme,
                     proxy_bypass_list,
                     zip_it=True,
                     multi_proxy=multi_proxy,
@@ -4329,6 +4473,9 @@ def get_local_driver(
         included_disabled_features.append("PrivacySandboxSettings4")
         included_disabled_features.append("SidePanelPinning")
         included_disabled_features.append("UserAgentClientHint")
+        included_disabled_features.append(
+            "DisableLoadExtensionCommandLineSwitch"
+        )
         for item in extra_disabled_features:
             if item not in included_disabled_features:
                 included_disabled_features.append(item)
@@ -4441,6 +4588,7 @@ def get_local_driver(
                 proxy_auth,
                 proxy_user,
                 proxy_pass,
+                proxy_scheme,
                 proxy_bypass_list,
                 proxy_pac_url,
                 multi_proxy,
@@ -4979,6 +5127,7 @@ def get_local_driver(
                                         None,  # proxy_auth
                                         None,  # proxy_user
                                         None,  # proxy_pass
+                                        None,  # proxy_scheme
                                         None,  # proxy_bypass_list
                                         None,  # proxy_pac_url
                                         None,  # multi_proxy
@@ -5205,7 +5354,9 @@ def get_local_driver(
                             driver = webdriver.Chrome(
                                 service=service, options=chrome_options
                             )
-                            return extend_driver(driver, proxy_auth, use_uc)
+                            return extend_driver(
+                                driver, proxy_auth, use_uc, recorder_ext
+                            )
                     if not auto_upgrade_chromedriver:
                         raise  # Not an obvious fix.
                     else:
@@ -5232,6 +5383,7 @@ def get_local_driver(
                         None,  # proxy_auth
                         None,  # proxy_user
                         None,  # proxy_pass
+                        None,  # proxy_scheme
                         None,  # proxy_bypass_list
                         None,  # proxy_pac_url
                         None,  # multi_proxy
@@ -5456,11 +5608,15 @@ def get_local_driver(
                                 'Emulation.setDeviceMetricsOverride',
                                 set_device_metrics_override
                             )
-                return extend_driver(driver, proxy_auth, use_uc)
+                return extend_driver(
+                    driver, proxy_auth, use_uc, recorder_ext
+                )
             else:  # Running headless on Linux (and not using --uc)
                 try:
                     driver = webdriver.Chrome(options=chrome_options)
-                    return extend_driver(driver, proxy_auth, use_uc)
+                    return extend_driver(
+                        driver, proxy_auth, use_uc, recorder_ext
+                    )
                 except Exception as e:
                     if not hasattr(e, "msg"):
                         raise
@@ -5482,7 +5638,9 @@ def get_local_driver(
                             driver = webdriver.Chrome(
                                 service=service, options=chrome_options
                             )
-                            return extend_driver(driver, proxy_auth, use_uc)
+                            return extend_driver(
+                                driver, proxy_auth, use_uc, recorder_ext
+                            )
                     mcv = None  # Major Chrome Version
                     if "Current browser version is " in e.msg:
                         line = e.msg.split("Current browser version is ")[1]
@@ -5525,7 +5683,9 @@ def get_local_driver(
                                 service=service,
                                 options=chrome_options,
                             )
-                            return extend_driver(driver, proxy_auth, use_uc)
+                            return extend_driver(
+                                driver, proxy_auth, use_uc, recorder_ext
+                            )
                     # Use the virtual display on Linux during headless errors
                     logging.debug(
                         "\nWarning: Chrome failed to launch in"
@@ -5543,7 +5703,9 @@ def get_local_driver(
                     driver = webdriver.Chrome(
                         service=service, options=chrome_options
                     )
-                    return extend_driver(driver, proxy_auth, use_uc)
+                    return extend_driver(
+                        driver, proxy_auth, use_uc, recorder_ext
+                    )
         except Exception as original_exception:
             if use_uc:
                 raise
@@ -5553,7 +5715,9 @@ def get_local_driver(
                 driver = webdriver.Chrome(
                     service=service, options=chrome_options
                 )
-                return extend_driver(driver, proxy_auth, use_uc)
+                return extend_driver(
+                    driver, proxy_auth, use_uc, recorder_ext
+                )
             if user_data_dir:
                 print("\nUnable to set user_data_dir while starting Chrome!\n")
                 raise
@@ -5580,7 +5744,9 @@ def get_local_driver(
             )
             try:
                 driver = webdriver.Chrome(service=service)
-                return extend_driver(driver, proxy_auth, use_uc)
+                return extend_driver(
+                    driver, proxy_auth, use_uc, recorder_ext
+                )
             except Exception:
                 raise original_exception
     else:

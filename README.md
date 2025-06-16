@@ -7,7 +7,7 @@ docker build \
     --build-arg CHROME_VERSION=132.0.6834.159 \
     --build-arg GITHUB_PAT=ghp_XtjnedMhXXhB4aHa9jY8T77iVpb3mpL290Y \
     -t seleniumbase-executor:chrome132.0.6834.159 \
-    -t seleniumbase-executor:seleniumbase4.35.2 .
+    -t seleniumbase-executor:seleniumbase4.39.4 .
 ```
 
 See all possible `CHROME_VERSION` values

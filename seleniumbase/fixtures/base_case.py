@@ -162,6 +162,7 @@ class BaseCase(unittest.TestCase):
         self.__jqc_default_theme = None
         self.__jqc_default_color = None
         self.__jqc_default_width = None
+        self.__saved_id = None
         # Requires self._* instead of self.__* for external class use
         self._language = "English"
         self._presentation_slides = {}
@@ -1164,6 +1165,9 @@ class BaseCase(unittest.TestCase):
         """Alternative to self.driver.find_element_by_*(SELECTOR).submit()"""
         self.__check_scope()
         selector, by = self.__recalculate_selector(selector, by)
+        if self.__is_cdp_swap_needed():
+            self.cdp.submit(selector)
+            return
         element = self.wait_for_element_clickable(
             selector, by=by, timeout=settings.SMALL_TIMEOUT
         )
@@ -1906,7 +1910,10 @@ class BaseCase(unittest.TestCase):
             timeout = self.__get_new_timeout(timeout)
         selector, by = self.__recalculate_selector(selector, by)
         if self.__is_cdp_swap_needed():
-            return self.cdp.get_element_attribute(selector, attribute)
+            if hard_fail:
+                return self.cdp.get_element_attribute(selector, attribute)
+            else:
+                return self.cdp.get_attribute(selector, attribute)
         self.wait_for_ready_state_complete()
         time.sleep(0.01)
         if self.__is_shadow_selector(selector):
@@ -3530,12 +3537,24 @@ class BaseCase(unittest.TestCase):
 
     def set_window_size(self, width, height):
         self.__check_scope()
+        if self.__is_cdp_swap_needed():
+            position = self.cdp.get_window_position()
+            x = position["x"]
+            y = position["y"]
+            self.cdp.set_window_rect(x, y, width, height)
+            return
         self._check_browser()
         self.driver.set_window_size(width, height)
         self.__demo_mode_pause_if_active(tiny=True)
 
     def set_window_position(self, x, y):
         self.__check_scope()
+        if self.__is_cdp_swap_needed():
+            size = self.cdp.get_window_size()
+            width = size["width"]
+            height = size["height"]
+            self.cdp.set_window_rect(x, y, width, height)
+            return
         self._check_browser()
         self.driver.set_window_position(x, y)
         self.__demo_mode_pause_if_active(tiny=True)
@@ -3896,6 +3915,9 @@ class BaseCase(unittest.TestCase):
 
     def open_new_window(self, switch_to=True):
         """Opens a new browser tab/window and switches to it by default."""
+        if self.__is_cdp_swap_needed():
+            self.cdp.open_new_tab(switch_to=switch_to)
+            return
         self.wait_for_ready_state_complete()
         if switch_to:
             try:
@@ -3918,6 +3940,9 @@ class BaseCase(unittest.TestCase):
             timeout = settings.SMALL_TIMEOUT
         if self.timeout_multiplier and timeout == settings.SMALL_TIMEOUT:
             timeout = self.__get_new_timeout(timeout)
+        if self.__is_cdp_swap_needed() and not isinstance(window, str):
+            self.cdp.switch_to_tab(window)
+            return
         page_actions.switch_to_window(self.driver, window, timeout)
 
     def switch_to_default_window(self):
@@ -3984,6 +4009,7 @@ class BaseCase(unittest.TestCase):
         d_width=None,
         d_height=None,
         d_p_r=None,
+        **kwargs,
     ):
         """This method spins up an extra browser for tests that require
         more than one. The first browser is already provided by tests
@@ -4072,6 +4098,11 @@ class BaseCase(unittest.TestCase):
                 " for examples!)"
                 % (browserstack_ref, sauce_labs_ref)
             )
+        shortcuts = ["dark", "guest", "locale", "mobile", "pls", "uc", "wire"]
+        if kwargs:
+            for key in kwargs.keys():
+                if key not in shortcuts:
+                    raise TypeError("Unexpected keyword argument '%s'" % key)
         if browser is None:
             browser = self.browser
         browser_name = browser
@@ -4079,6 +4110,8 @@ class BaseCase(unittest.TestCase):
             headless = self.headless
         if locale_code is None:
             locale_code = self.locale_code
+        if "locale" in kwargs and not locale_code:
+            locale_code = kwargs["locale"]
         if protocol is None:
             protocol = self.protocol
         if servername is None:
@@ -4121,6 +4154,8 @@ class BaseCase(unittest.TestCase):
             uc_cdp_events = self.uc_cdp_events
         if uc_subprocess is None:
             uc_subprocess = self.uc_subprocess
+        if "uc" in kwargs and not undetectable:
+            undetectable = kwargs["uc"]
         if log_cdp_events is None:
             log_cdp_events = self.log_cdp_events
         if no_sandbox is None:
@@ -4135,8 +4170,12 @@ class BaseCase(unittest.TestCase):
             incognito = self.incognito
         if guest_mode is None:
             guest_mode = self.guest_mode
+        if "guest" in kwargs and not guest_mode:
+            guest_mode = kwargs["guest"]
         if dark_mode is None:
             dark_mode = self.dark_mode
+        if "dark" in kwargs and not dark_mode:
+            dark_mode = kwargs["dark"]
         if devtools is None:
             devtools = self.devtools
         if remote_debug is None:
@@ -4173,8 +4212,12 @@ class BaseCase(unittest.TestCase):
             driver_version = self.driver_version
         if page_load_strategy is None:
             page_load_strategy = self.page_load_strategy
+        if "pls" in kwargs and not page_load_strategy:
+            page_load_strategy = kwargs["pls"]
         if use_wire is None:
             use_wire = self.use_wire
+        if "wire" in kwargs and not use_wire:
+            use_wire = kwargs["wire"]
         if external_pdf is None:
             external_pdf = self.external_pdf
         test_id = self.__get_test_id()
@@ -4184,6 +4227,8 @@ class BaseCase(unittest.TestCase):
             cap_string = self.cap_string
         if is_mobile is None:
             is_mobile = self.mobile_emulator
+        if "mobile" in kwargs and not is_mobile:
+            is_mobile = kwargs["mobile"]
         if d_width is None:
             d_width = self.__device_width
         if d_height is None:
@@ -4550,9 +4595,9 @@ class BaseCase(unittest.TestCase):
         Loads the page cookies from the "saved_cookies" folder.
         Usage for setting expiry:
         If expiry == 0 or False: Delete "expiry".
+        If expiry is True: Set "expiry" to 24 hours in the future.
         If expiry == -1 (or < 0): Do not modify "expiry".
         If expiry > 0: Set "expiry" to expiry minutes in the future.
-        If expiry == True: Set "expiry" to 24 hours in the future.
         """
         cookies = self.get_saved_cookies(name)
         self.wait_for_ready_state_complete()
@@ -4564,12 +4609,12 @@ class BaseCase(unittest.TestCase):
                     cookie["domain"] = trim_origin
             if "expiry" in cookie and (not expiry or expiry == 0):
                 del cookie["expiry"]
+            elif expiry is True:
+                cookie["expiry"] = int(time.time()) + 86400
             elif isinstance(expiry, (int, float)) and expiry < 0:
                 pass
             elif isinstance(expiry, (int, float)) and expiry > 0:
                 cookie["expiry"] = int(time.time()) + int(expiry * 60.0)
-            elif expiry:
-                cookie["expiry"] = int(time.time()) + 86400
             self.driver.add_cookie(cookie)
 
     def delete_all_cookies(self):
@@ -4651,9 +4696,9 @@ class BaseCase(unittest.TestCase):
         self.add_cookie({'name': 'foo', 'value': 'bar', 'sameSite': 'Strict'})
         Usage for setting expiry:
         If expiry == 0 or False: Delete "expiry".
+        If expiry is True: Set "expiry" to 24 hours in the future.
         If expiry == -1 (or < 0): Do not modify "expiry".
         If expiry > 0: Set "expiry" to expiry minutes in the future.
-        If expiry == True: Set "expiry" to 24 hours in the future.
         """
         self.__check_scope()
         self._check_browser()
@@ -4665,21 +4710,21 @@ class BaseCase(unittest.TestCase):
                 cookie["domain"] = trim_origin
         if "expiry" in cookie and (not expiry or expiry == 0):
             del cookie["expiry"]
+        elif expiry is True:
+            cookie["expiry"] = int(time.time()) + 86400
         elif isinstance(expiry, (int, float)) and expiry < 0:
             pass
         elif isinstance(expiry, (int, float)) and expiry > 0:
             cookie["expiry"] = int(time.time()) + int(expiry * 60.0)
-        elif expiry:
-            cookie["expiry"] = int(time.time()) + 86400
         self.driver.add_cookie(cookie_dict)
 
     def add_cookies(self, cookies, expiry=False):
         """
         Usage for setting expiry:
         If expiry == 0 or False: Delete "expiry".
+        If expiry is True: Set "expiry" to 24 hours in the future.
         If expiry == -1 (or < 0): Do not modify "expiry".
         If expiry > 0: Set "expiry" to expiry minutes in the future.
-        If expiry == True: Set "expiry" to 24 hours in the future.
         """
         self.__check_scope()
         self._check_browser()
@@ -4691,12 +4736,12 @@ class BaseCase(unittest.TestCase):
                     cookie["domain"] = trim_origin
             if "expiry" in cookie and (not expiry or expiry == 0):
                 del cookie["expiry"]
+            elif expiry is True:
+                cookie["expiry"] = int(time.time()) + 86400
             elif isinstance(expiry, (int, float)) and expiry < 0:
                 pass
             elif isinstance(expiry, (int, float)) and expiry > 0:
                 cookie["expiry"] = int(time.time()) + int(expiry * 60.0)
-            elif expiry:
-                cookie["expiry"] = int(time.time()) + 86400
             self.driver.add_cookie(cookie)
 
     def __set_esc_skip(self):
@@ -4840,15 +4885,25 @@ class BaseCase(unittest.TestCase):
         script = """document.designMode = 'off';"""
         self.execute_script(script)
 
-    def activate_cdp_mode(self, url=None):
+    def activate_cdp_mode(self, url=None, **kwargs):
+        """Activate CDP Mode with the URL and kwargs."""
         if hasattr(self.driver, "_is_using_uc") and self.driver._is_using_uc:
-            self.driver.uc_open_with_cdp_mode(url)
+            if self.__is_cdp_swap_needed():
+                return  # CDP Mode is already active
+            if not self.is_connected():
+                self.driver.connect()
+            current_url = self.get_current_url()
+            if not current_url.startswith(("about", "data", "chrome")):
+                self.get_new_driver(undetectable=True)
+            self.driver.uc_open_with_cdp_mode(url, **kwargs)
         else:
             self.get_new_driver(undetectable=True)
-            self.driver.uc_open_with_cdp_mode(url)
+            self.driver.uc_open_with_cdp_mode(url, **kwargs)
         self.cdp = self.driver.cdp
 
     def activate_recorder(self):
+        """Activate Recorder Mode on the current tab/window.
+        For persistent Recorder Mode, use the extension instead."""
         from seleniumbase.js_code.recorder_js import recorder_js
 
         if not self.is_chromium():
@@ -7629,10 +7684,13 @@ class BaseCase(unittest.TestCase):
                     break
                 time.sleep(1)
         if not found and not os.path.exists(downloaded_file_path):
+            plural = "s"
+            if timeout == 1:
+                plural = ""
             message = (
                 "File {%s} was not found in the downloads folder {%s} "
-                "after %s seconds! (Or the download didn't complete!)"
-                % (file, df, timeout)
+                "after %s second%s! (Or the download didn't complete!)"
+                % (file, df, timeout, plural)
             )
             page_actions.timeout_exception("NoSuchFileException", message)
         if self.recorder_mode and self.__current_url_is_recordable():
@@ -7686,10 +7744,13 @@ class BaseCase(unittest.TestCase):
                     break
                 time.sleep(1)
         if not found:
+            plural = "s"
+            if timeout == 1:
+                plural = ""
             message = (
                 "Regex {%s} was not found in the downloads folder {%s} "
-                "after %s seconds! (Or the download didn't complete!)"
-                % (regex, df, timeout)
+                "after %s second%s! (Or the download didn't complete!)"
+                % (regex, df, timeout, plural)
             )
             page_actions.timeout_exception("NoSuchFileException", message)
         if self.demo_mode:
@@ -8064,10 +8125,6 @@ class BaseCase(unittest.TestCase):
                     else:
                         found = False
                         message = entry["message"]
-                        if message.count(" - Failed to load resource") == 1:
-                            message = message.split(
-                                " - Failed to load resource"
-                            )[0]
                         for substring in exclude:
                             substring = str(substring)
                             if (
@@ -8085,7 +8142,30 @@ class BaseCase(unittest.TestCase):
                 u_c_t_e = " Uncaught TypeError: "
                 if f_t_l_r in errors[n]["message"]:
                     url = errors[n]["message"].split(f_t_l_r)[0]
-                    errors[n] = {"Error 404 (broken link)": url}
+                    if "status of 400" in errors[n]["message"]:
+                        errors[n] = {"Error 400 (Bad Request)": url}
+                    elif "status of 401" in errors[n]["message"]:
+                        errors[n] = {"Error 401 (Unauthorized)": url}
+                    elif "status of 402" in errors[n]["message"]:
+                        errors[n] = {"Error 402 (Payment Required)": url}
+                    elif "status of 403" in errors[n]["message"]:
+                        errors[n] = {"Error 403 (Forbidden)": url}
+                    elif "status of 404" in errors[n]["message"]:
+                        errors[n] = {"Error 404 (Not Found)": url}
+                    elif "status of 405" in errors[n]["message"]:
+                        errors[n] = {"Error 405 (Method Not Allowed)": url}
+                    elif "status of 406" in errors[n]["message"]:
+                        errors[n] = {"Error 406 (Not Acceptable)": url}
+                    elif "status of 407" in errors[n]["message"]:
+                        errors[n] = {"Error 407 (Proxy Auth Required)": url}
+                    elif "status of 408" in errors[n]["message"]:
+                        errors[n] = {"Error 408 (Request Timeout)": url}
+                    elif "status of 409" in errors[n]["message"]:
+                        errors[n] = {"Error 409 (Conflict)": url}
+                    elif "status of 410" in errors[n]["message"]:
+                        errors[n] = {"Error 410 (Gone)": url}
+                    else:
+                        errors[n] = {"Failed to load resource": url}
                 elif u_c_s_e in errors[n]["message"]:
                     url = errors[n]["message"].split(u_c_s_e)[0]
                     error = errors[n]["message"].split(u_c_s_e)[1]
@@ -8194,7 +8274,10 @@ class BaseCase(unittest.TestCase):
         In CDP Mode, the CDP-Driver controls the web browser.
         The CDP-Driver can be connected while WebDriver isn't.
         """
-        return self.driver.is_connected()
+        if hasattr(self.driver, "is_connected"):
+            return self.driver.is_connected()
+        else:
+            return True
 
     def is_chromium(self):
         """Return True if the browser is Chrome or Edge."""
@@ -8775,6 +8858,9 @@ class BaseCase(unittest.TestCase):
         self.__check_scope()
         if not self.__is_valid_storage_url():
             raise WebDriverException("Local Storage is not available here!")
+        if self.__is_cdp_swap_needed():
+            self.cdp.set_local_storage_item(key, value)
+            return
         self.execute_script(
             "window.localStorage.setItem('{}', '{}');".format(key, value)
         )
@@ -8783,6 +8869,8 @@ class BaseCase(unittest.TestCase):
         self.__check_scope()
         if not self.__is_valid_storage_url():
             raise WebDriverException("Local Storage is not available here!")
+        if self.__is_cdp_swap_needed():
+            return self.cdp.get_local_storage_item(key)
         return self.execute_script(
             "return window.localStorage.getItem('{}');".format(key)
         )
@@ -8834,6 +8922,9 @@ class BaseCase(unittest.TestCase):
         self.__check_scope()
         if not self.__is_valid_storage_url():
             raise WebDriverException("Session Storage is not available here!")
+        if self.__is_cdp_swap_needed():
+            self.cdp.set_session_storage_item(key, value)
+            return
         self.execute_script(
             "window.sessionStorage.setItem('{}', '{}');".format(key, value)
         )
@@ -8842,6 +8933,8 @@ class BaseCase(unittest.TestCase):
         self.__check_scope()
         if not self.__is_valid_storage_url():
             raise WebDriverException("Session Storage is not available here!")
+        if self.__is_cdp_swap_needed():
+            return self.cdp.get_session_storage_item(key)
         return self.execute_script(
             "return window.sessionStorage.getItem('{}');".format(key)
         )
@@ -9957,12 +10050,14 @@ class BaseCase(unittest.TestCase):
         elif self.__is_cdp_swap_needed():
             self.cdp.assert_text(text, selector, timeout=timeout)
             return True
-        elif not self.is_connected():
-            self.connect()
         elif self.__is_shadow_selector(selector):
+            if hasattr(self, "connect") and not self.is_connected():
+                self.connect()
             self.__assert_shadow_text_visible(text, selector, timeout)
             return True
         else:
+            if hasattr(self, "connect") and not self.is_connected():
+                self.connect()
             self.wait_for_text_visible(text, selector, by=by, timeout=timeout)
             if self.demo_mode:
                 a_t = "ASSERT TEXT"
@@ -10096,9 +10191,13 @@ class BaseCase(unittest.TestCase):
                 if now_ms >= stop_ms:
                     break
                 time.sleep(0.2)
-        message = "Link text {%s} was not found after %s seconds!" % (
+        plural = "s"
+        if timeout == 1:
+            plural = ""
+        message = "Link text {%s} was not found after %s second%s!" % (
             link_text,
             timeout,
+            plural,
         )
         page_actions.timeout_exception("LinkTextNotFoundException", message)
 
@@ -10121,9 +10220,12 @@ class BaseCase(unittest.TestCase):
                 if now_ms >= stop_ms:
                     break
                 time.sleep(0.2)
+        plural = "s"
+        if timeout == 1:
+            plural = ""
         message = (
-            "Partial Link text {%s} was not found after %s seconds!"
-            "" % (link_text, timeout)
+            "Partial Link text {%s} was not found after %s second%s!"
+            "" % (link_text, timeout, plural)
         )
         page_actions.timeout_exception("LinkTextNotFoundException", message)
 
@@ -10336,7 +10438,7 @@ class BaseCase(unittest.TestCase):
             timeout = self.__get_new_timeout(timeout)
         selector, by = self.__recalculate_selector(selector, by)
         if self.__is_cdp_swap_needed():
-            return self.cdp.wait_for_text(
+            return self.cdp.wait_for_text_not_visible(
                 text, selector=selector, timeout=timeout
             )
         return page_actions.wait_for_text_not_visible(
@@ -14331,9 +14433,12 @@ class BaseCase(unittest.TestCase):
                 if must_be_visible and is_present:
                     error = "not visible"
                     the_exception = "ElementNotVisibleException"
+                plural = "s"
+                if timeout == 1:
+                    plural = ""
                 msg = (
-                    "Shadow DOM Element {%s} was %s after %s seconds!"
-                    % (selector_chain, error, timeout)
+                    "Shadow DOM Element {%s} was %s after %s second%s!"
+                    % (selector_chain, error, timeout, plural)
                 )
                 page_actions.timeout_exception(the_exception, msg)
         return element
@@ -15611,19 +15716,24 @@ class BaseCase(unittest.TestCase):
             test_id = "%s.%s" % (file_name, scenario_name)
             return test_id
         elif hasattr(self, "is_context_manager") and self.is_context_manager:
+            if hasattr(self, "_manager_saved_id"):
+                self.__saved_id = self._manager_saved_id
+            if self.__saved_id:
+                return self.__saved_id
             filename = self.__class__.__module__.split(".")[-1] + ".py"
             methodname = self._testMethodName
             context_id = None
             if filename == "base_case.py" or methodname == "runTest":
                 import traceback
-                stack_base = traceback.format_stack()[0].split(", in ")[0]
-                test_base = stack_base.split(", in ")[0].split(os.sep)[-1]
+                stack_base = traceback.format_stack()[0].split(os.sep)[-1]
+                test_base = stack_base.split(", in ")[0]
                 if hasattr(self, "cm_filename") and self.cm_filename:
                     filename = self.cm_filename
                 else:
                     filename = test_base.split('"')[0]
                 methodname = ".line_" + test_base.split(", line ")[-1]
                 context_id = filename.split(".")[0] + methodname
+                self.__saved_id = context_id
                 return context_id
         test_id = "%s.%s.%s" % (
             self.__class__.__module__,

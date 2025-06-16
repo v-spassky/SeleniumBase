@@ -101,12 +101,12 @@ class CDPMethods():
         element.get_parent = lambda: self.__get_parent(element)
         return element
 
-    def get(self, url):
+    def get(self, url, **kwargs):
         url = shared_utils.fix_url_as_needed(url)
         driver = self.driver
         if hasattr(driver, "cdp_base"):
             driver = driver.cdp_base
-        self.page = self.loop.run_until_complete(driver.get(url))
+        self.loop.run_until_complete(self.page.get(url, **kwargs))
         url_protocol = url.split(":")[0]
         safe_url = True
         if url_protocol not in ["about", "data", "chrome"]:
@@ -120,8 +120,8 @@ class CDPMethods():
         self.__slow_mode_pause_if_set()
         self.loop.run_until_complete(self.page.wait())
 
-    def open(self, url):
-        self.get(url)
+    def open(self, url, **kwargs):
+        self.get(url, **kwargs)
 
     def reload(self, ignore_cache=True, script_to_evaluate_on_load=None):
         self.loop.run_until_complete(
@@ -645,6 +645,23 @@ class CDPMethods():
             driver.tile_windows(windows, max_columns)
         )
 
+    def grant_permissions(self, permissions, origin=None):
+        """Grant specific permissions to the current window.
+        Applies to all origins if no origin is specified."""
+        driver = self.driver
+        if hasattr(driver, "cdp_base"):
+            driver = driver.cdp_base
+        return self.loop.run_until_complete(
+            driver.grant_permissions(permissions, origin)
+        )
+
+    def grant_all_permissions(self):
+        """Grant all permissions to the current window for all origins."""
+        driver = self.driver
+        if hasattr(driver, "cdp_base"):
+            driver = driver.cdp_base
+        return self.loop.run_until_complete(driver.grant_all_permissions())
+
     def get_all_cookies(self, *args, **kwargs):
         driver = self.driver
         if hasattr(driver, "cdp_base"):
@@ -681,9 +698,7 @@ class CDPMethods():
         driver = self.driver
         if hasattr(driver, "cdp_base"):
             driver = driver.cdp_base
-        return self.loop.run_until_complete(
-            driver.cookies.clear()
-        )
+        return self.loop.run_until_complete(driver.cookies.clear())
 
     def sleep(self, seconds):
         time.sleep(seconds)
@@ -702,9 +717,7 @@ class CDPMethods():
 
         js_code = active_css_js.get_active_element_css
         js_code = js_code.replace("return getBestSelector", "getBestSelector")
-        return self.loop.run_until_complete(
-            self.page.evaluate(js_code)
-        )
+        return self.loop.run_until_complete(self.page.evaluate(js_code))
 
     def click(self, selector, timeout=None):
         if not timeout:
@@ -955,6 +968,20 @@ class CDPMethods():
         self.__slow_mode_pause_if_set()
         self.loop.run_until_complete(self.page.sleep(0.025))
 
+    def submit(self, selector):
+        submit_script = (
+            """elm = document.querySelector('%s');
+            const event = new KeyboardEvent("keydown", {
+                key: "Enter",
+                keyCode: 13,
+                code: "Enter",
+                which: 13,
+                bubbles: true
+            });
+            elm.dispatchEvent(event);""" % selector
+        )
+        self.loop.run_until_complete(self.page.evaluate(submit_script))
+
     def evaluate(self, expression):
         """Run a JavaScript expression and return the result."""
         expression = expression.strip()
@@ -964,17 +991,13 @@ class CDPMethods():
                 "\n".join(exp_list[0:-1]) + "\n"
                 + exp_list[-1].strip()[len("return "):]
             ).strip()
-        return self.loop.run_until_complete(
-            self.page.evaluate(expression)
-        )
+        return self.loop.run_until_complete(self.page.evaluate(expression))
 
     def js_dumps(self, obj_name):
         """Similar to evaluate(), but for dictionary results."""
         if obj_name.startswith("return "):
             obj_name = obj_name[len("return "):]
-        return self.loop.run_until_complete(
-            self.page.js_dumps(obj_name)
-        )
+        return self.loop.run_until_complete(self.page.js_dumps(obj_name))
 
     def maximize(self):
         if self.get_window()[1].window_state.value == "maximized":
@@ -1014,10 +1037,61 @@ class CDPMethods():
         self.set_window_rect(x, y, width, height)
         self.__add_light_pause()
 
+    def open_new_window(self, url=None, switch_to=True):
+        return self.open_new_tab(url=url, switch_to=switch_to)
+
+    def switch_to_window(self, window):
+        self.switch_to_tab(window)
+
+    def switch_to_newest_window(self):
+        self.switch_to_tab(-1)
+
+    def open_new_tab(self, url=None, switch_to=True):
+        if not isinstance(url, str):
+            url = "about:blank"
+        self.loop.run_until_complete(self.page.get(url, new_tab=True))
+        if switch_to:
+            self.switch_to_newest_tab()
+
+    def switch_to_tab(self, tab):
+        driver = self.driver
+        if hasattr(driver, "cdp_base"):
+            driver = driver.cdp_base
+        if isinstance(tab, int):
+            self.page = driver.tabs[tab]
+        elif isinstance(tab, cdp_util.Tab):
+            self.page = tab
+        else:
+            raise Exception("`tab` must be an int or a Tab type!")
+        self.bring_active_window_to_front()
+
+    def switch_to_newest_tab(self):
+        self.switch_to_tab(-1)
+
+    def close_active_tab(self):
+        """Close the active tab.
+        The active tab is the one currenly controlled by CDP.
+        The active tab MIGHT NOT be the currently visible tab!
+        (If a page opens a new tab, the new tab WON'T be active)
+        To switch the active tab, call: sb.switch_to_tab(tab)"""
+        return self.loop.run_until_complete(self.page.close())
+
+    def get_active_tab(self):
+        """Return the active tab.
+        The active tab is the one currenly controlled by CDP.
+        The active tab MIGHT NOT be the currently visible tab!
+        (If a page opens a new tab, the new tab WON'T be active)
+        To switch the active tab, call: sb.switch_to_tab(tab)"""
+        return self.page
+
+    def get_tabs(self):
+        driver = self.driver
+        if hasattr(driver, "cdp_base"):
+            driver = driver.cdp_base
+        return driver.tabs
+
     def get_window(self):
-        return self.loop.run_until_complete(
-            self.page.get_window()
-        )
+        return self.loop.run_until_complete(self.page.get_window())
 
     def get_text(self, selector):
         return self.find_element(selector).text_all
@@ -1063,6 +1137,16 @@ class CDPMethods():
         return self.loop.run_until_complete(
             self.page.evaluate("navigator.language || navigator.languages[0]")
         )
+
+    def get_local_storage_item(self, key):
+        js_code = """localStorage.getItem('%s');""" % key
+        with suppress(Exception):
+            return self.loop.run_until_complete(self.page.evaluate(js_code))
+
+    def get_session_storage_item(self, key):
+        js_code = """sessionStorage.getItem('%s');""" % key
+        with suppress(Exception):
+            return self.loop.run_until_complete(self.page.evaluate(js_code))
 
     def get_screen_rect(self):
         coordinates = self.loop.run_until_complete(
@@ -1152,15 +1236,23 @@ class CDPMethods():
         if not timeout:
             timeout = settings.SMALL_TIMEOUT
         selector = self.__convert_to_css_if_xpath(selector)
-        self.select(selector, timeout=timeout)
+        element = self.select(selector, timeout=timeout)
         self.__add_light_pause()
-        coordinates = self.loop.run_until_complete(
-            self.page.js_dumps(
-                """document.querySelector"""
-                """('%s').getBoundingClientRect()"""
-                % js_utils.escape_quotes_if_needed(re.escape(selector))
+        coordinates = None
+        if ":contains(" in selector:
+            position = element.get_position()
+            x = position.x
+            y = position.y
+            width = position.width
+            height = position.height
+            coordinates = {"x": x, "y": y, "width": width, "height": height}
+        else:
+            coordinates = self.loop.run_until_complete(
+                self.page.js_dumps(
+                    """document.querySelector('%s').getBoundingClientRect()"""
+                    % js_utils.escape_quotes_if_needed(re.escape(selector))
+                )
             )
-        )
         return coordinates
 
     def get_element_size(self, selector, timeout=None):
@@ -1211,14 +1303,10 @@ class CDPMethods():
         return ((e_x + e_width / 2.0) + 0.5, (e_y + e_height / 2.0) + 0.5)
 
     def get_document(self):
-        return self.loop.run_until_complete(
-            self.page.get_document()
-        )
+        return self.loop.run_until_complete(self.page.get_document())
 
     def get_flattened_document(self):
-        return self.loop.run_until_complete(
-            self.page.get_flattened_document()
-        )
+        return self.loop.run_until_complete(self.page.get_flattened_document())
 
     def get_element_attributes(self, selector):
         selector = self.__convert_to_css_if_xpath(selector)
@@ -1230,6 +1318,8 @@ class CDPMethods():
         )
 
     def get_element_attribute(self, selector, attribute):
+        """Find an element and return the value of an attribute.
+        Raises an exception if there's no such element or attribute."""
         attributes = self.get_element_attributes(selector)
         with suppress(Exception):
             return attributes[attribute]
@@ -1240,10 +1330,16 @@ class CDPMethods():
         return value
 
     def get_attribute(self, selector, attribute):
+        """Find an element and return the value of an attribute.
+        If the element doesn't exist: Raises an exception.
+        If the attribute doesn't exist: Returns None."""
         return self.find_element(selector).get_attribute(attribute)
 
     def get_element_html(self, selector):
+        """Find an element and return the outerHTML."""
         selector = self.__convert_to_css_if_xpath(selector)
+        self.find_element(selector)
+        self.__add_light_pause()
         return self.loop.run_until_complete(
             self.page.evaluate(
                 """document.querySelector('%s').outerHTML"""
@@ -1254,6 +1350,16 @@ class CDPMethods():
     def set_locale(self, locale):
         """(Settings will take effect on the next page load)"""
         self.loop.run_until_complete(self.page.set_locale(locale))
+
+    def set_local_storage_item(self, key, value):
+        js_code = """localStorage.setItem('%s','%s');""" % (key, value)
+        with suppress(Exception):
+            self.loop.run_until_complete(self.page.evaluate(js_code))
+
+    def set_session_storage_item(self, key, value):
+        js_code = """sessionStorage.setItem('%s','%s');""" % (key, value)
+        with suppress(Exception):
+            self.loop.run_until_complete(self.page.evaluate(js_code))
 
     def set_attributes(self, selector, attribute, value):
         """This method uses JavaScript to set/update a common attribute.
@@ -1533,6 +1639,8 @@ class CDPMethods():
             pyautogui.dragTo(x2, y2, button="left", duration=timeframe)
 
     def gui_drag_drop_points(self, x1, y1, x2, y2, timeframe=0.35):
+        """Use PyAutoGUI to drag-and-drop from one point to another.
+        Can simulate click-and-hold when using the same point twice."""
         gui_lock = fasteners.InterProcessLock(
             constants.MultiBrowser.PYAUTOGUILOCK
         )
@@ -1572,6 +1680,8 @@ class CDPMethods():
         self.loop.run_until_complete(self.page.wait())
 
     def gui_drag_and_drop(self, drag_selector, drop_selector, timeframe=0.35):
+        """Use PyAutoGUI to drag-and-drop from one selector to another.
+        Can simulate click-and-hold when using the same selector twice."""
         self.__slow_mode_pause_if_set()
         self.bring_active_window_to_front()
         x1, y1 = self.get_gui_element_center(drag_selector)
@@ -1579,6 +1689,14 @@ class CDPMethods():
         x2, y2 = self.get_gui_element_center(drop_selector)
         self.__add_light_pause()
         self.gui_drag_drop_points(x1, y1, x2, y2, timeframe=timeframe)
+
+    def gui_click_and_hold(self, selector, timeframe=0.35):
+        """Use PyAutoGUI to click-and-hold a selector."""
+        self.__slow_mode_pause_if_set()
+        self.bring_active_window_to_front()
+        x, y = self.get_gui_element_center(selector)
+        self.__add_light_pause()
+        self.gui_drag_drop_points(x, y, x, y, timeframe=timeframe)
 
     def __gui_hover_x_y(self, x, y, timeframe=0.25, uc_lock=False):
         self.__install_pyautogui_if_missing()
@@ -2099,6 +2217,12 @@ class CDPMethods():
             )
         else:
             self.select(selector).save_screenshot(filename)
+
+    def print_to_pdf(self, name, folder=None):
+        filename = name
+        if folder:
+            filename = os.path.join(folder, name)
+        self.loop.run_until_complete(self.page.print_to_pdf(filename))
 
 
 class Chrome(CDPMethods):

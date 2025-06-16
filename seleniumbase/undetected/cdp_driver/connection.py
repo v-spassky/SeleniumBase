@@ -273,7 +273,7 @@ class Connection(metaclass=CantTouchThis):
             except (Exception,) as e:
                 logger.debug("Exception during opening of websocket: %s", e)
                 if self.listener:
-                    self.listener.cancel()
+                    await self.listener.cancel()
                 raise
         if not self.listener or not self.listener.running:
             self.listener = Listener(self)
@@ -290,10 +290,6 @@ class Connection(metaclass=CantTouchThis):
         Closes the websocket connection. Shouldn't be called manually by users.
         """
         if self.websocket and self.websocket.state is not State.CLOSED:
-            if self.listener and self.listener.running:
-                self.listener.cancel()
-                self.enabled_domains.clear()
-            await asyncio.sleep(0.015)
             try:
                 await self.websocket.close()
             except Exception:
@@ -301,6 +297,9 @@ class Connection(metaclass=CantTouchThis):
                     "\n❌ Error closing websocket connection to %s",
                     self.websocket_url
                 )
+            if self.listener and self.listener.running:
+                await self.listener.cancel()
+                self.enabled_domains.clear()
             logger.debug(
                 "\n❌ Closed websocket connection to %s", self.websocket_url
             )
@@ -347,7 +346,68 @@ class Connection(metaclass=CantTouchThis):
 
     async def set_locale(self, locale: Optional[str] = None):
         """Sets the Language Locale code via set_user_agent_override."""
-        await self.send(cdp.network.set_user_agent_override("", locale))
+        await self.set_user_agent(user_agent="", accept_language=locale)
+        await self.send(cdp.emulation.set_locale_override(locale))
+
+    async def set_timezone(self, timezone: Optional[str] = None):
+        """Sets the Timezone via set_timezone_override."""
+        await self.send(cdp.emulation.set_timezone_override(timezone))
+
+    async def set_user_agent(
+        self,
+        user_agent: Optional[str] = "",
+        accept_language: Optional[str] = None,
+        platform: Optional[str] = None,  # navigator.platform
+    ):
+        """Sets the User Agent via set_user_agent_override."""
+        if not user_agent:
+            user_agent = ""
+        await self.send(cdp.network.set_user_agent_override(
+            user_agent=user_agent,
+            accept_language=accept_language,
+            platform=platform,
+        ))
+
+    async def set_geolocation(self, geolocation: Optional[tuple] = None):
+        """Sets the User Agent via set_geolocation_override."""
+        await self.send(cdp.browser.grant_permissions(
+            permissions=["geolocation"],
+        ))
+        await self.send(cdp.emulation.set_geolocation_override(
+            latitude=geolocation[0],
+            longitude=geolocation[1],
+            accuracy=100,
+        ))
+
+    async def set_auth(self, username, password, tab):
+        async def auth_challenge_handler(event: cdp.fetch.AuthRequired):
+            await tab.send(
+                cdp.fetch.continue_with_auth(
+                    request_id=event.request_id,
+                    auth_challenge_response=cdp.fetch.AuthChallengeResponse(
+                        response="ProvideCredentials",
+                        username=username,
+                        password=password,
+                    ),
+                )
+            )
+
+        async def req_paused(event: cdp.fetch.RequestPaused):
+            await tab.send(
+                cdp.fetch.continue_request(request_id=event.request_id)
+            )
+
+        tab.add_handler(
+            cdp.fetch.RequestPaused,
+            lambda event: asyncio.create_task(req_paused(event)),
+        )
+
+        tab.add_handler(
+            cdp.fetch.AuthRequired,
+            lambda event: asyncio.create_task(auth_challenge_handler(event)),
+        )
+
+        await tab.send(cdp.fetch.enable(handle_auth_requests=True))
 
     def __getattr__(self, item):
         """:meta private:"""
@@ -382,7 +442,7 @@ class Connection(metaclass=CantTouchThis):
     async def send(
         self,
         cdp_obj: Generator[dict[str, Any], dict[str, Any], Any],
-        _is_update=False,
+        _is_update=True,
     ) -> Any:
         """
         Send a protocol command.
@@ -525,9 +585,13 @@ class Listener:
     def time_before_considered_idle(self, seconds: Union[int, float]):
         self._time_before_considered_idle = seconds
 
-    def cancel(self):
+    async def cancel(self):
         if self.task and not self.task.cancelled():
             self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
 
     @property
     def running(self):
@@ -547,8 +611,7 @@ class Listener:
             except asyncio.TimeoutError:
                 self.idle.set()
                 # Pause for a moment.
-                # await asyncio.sleep(self.time_before_considered_idle / 10)
-                await asyncio.sleep(0.015)
+                await asyncio.sleep(self.time_before_considered_idle / 10)
                 continue
             except (Exception,) as e:
                 logger.debug(
