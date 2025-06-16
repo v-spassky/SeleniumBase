@@ -187,3 +187,17 @@ class CDPFindElementByText(SBCommand):
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}("{self.text}")'
+
+
+class CDPCloseActiveTab(SBCommand):
+
+    def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
+        result = sb.cdp.close_active_tab()
+        return SBCommandResult(result)
+
+
+class CDPSwitchToNewestTab(SBCommand):
+
+    def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
+        result = sb.cdp.switch_to_newest_tab()
+        return SBCommandResult(result)

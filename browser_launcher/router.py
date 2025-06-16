@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from command import (
     ActivateCDPMode,
     CDPClick,
+    CDPCloseActiveTab,
     CDPIsElementVisible,
     CDPGet,
     CDPGetCurrentUrl,
@@ -12,6 +13,7 @@ from command import (
     CDPFindElementByText,
     CDPGetText,
     CDPPressKeys,
+    CDPSwitchToNewestTab,
     Connect,
     Disconnect,
     IsConnected,
@@ -125,6 +127,18 @@ def cdp_is_text_on_page(request: RequestWithText) -> SBCommandResponse:
 @router.post('/cdp_gui_click_coordinates')
 def cdp_gui_click_coordinates(request: RequestWithCoordinates) -> SBCommandResponse:
     result = mediator.send_and_wait_until_executed(CDPGUIClickCoordinates(request.x, request.y))
+    return SBCommandResponse(result=str(result.raw_result))
+
+
+@router.post('/cdp_close_active_tab')
+def cdp_close_active_tab() -> SBCommandResponse:
+    result = mediator.send_and_wait_until_executed(CDPCloseActiveTab())
+    return SBCommandResponse(result=str(result.raw_result))
+
+
+@router.post('/cdp_switch_to_newest_tab')
+def cdp_switch_to_newest_tab() -> SBCommandResponse:
+    result = mediator.send_and_wait_until_executed(CDPSwitchToNewestTab())
     return SBCommandResponse(result=str(result.raw_result))
 
 
