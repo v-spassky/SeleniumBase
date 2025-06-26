@@ -10,7 +10,7 @@ from command import (
     CDPGetCurrentUrl,
     CDPGetPageSource,
     CDPGUIClickCoordinates,
-    CDPFindElementByText,
+    CDPIsTextOnPage,
     CDPGetText,
     CDPPressKeys,
     CDPSwitchToNewestTab,
@@ -20,6 +20,13 @@ from command import (
     Reconnect,
     UCGUIClickCaptcha,
     UCGUIHandleCaptcha,
+    GetCurrentURLResult,
+    EmptyResult,
+    IsDriverConnectedResult,
+    GetTextResult,
+    IsElementVisibleResult,
+    GetPageSourceResult,
+    IsTextOnPageResult,
 )
 from mediator import mediator
 from schema import (
@@ -28,7 +35,6 @@ from schema import (
     RequestWithURL,
     RequestWithCSSSelector,
     RequestWithCSSSelectorAndText,
-    SBCommandResponse,
     RequestWithText,
 )
 
@@ -36,110 +42,92 @@ router = APIRouter()
 
 
 @router.post('/activate_cdp_mode')
-def activate_cdp_mode(request: RequestWithURL) -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(ActivateCDPMode(request.url))
-    return SBCommandResponse(result=str(result.raw_result))
+def activate_cdp_mode(request: RequestWithURL) -> EmptyResult:
+    return mediator.send_and_wait_until_executed(ActivateCDPMode(request.url))
 
 
 @router.post('/connect')
-def connect() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(Connect())
-    return SBCommandResponse(result=str(result.raw_result))
+def connect() -> EmptyResult:
+    return mediator.send_and_wait_until_executed(Connect())
 
 @router.post('/reconnect')
-def reconnect() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(Reconnect())
-    return SBCommandResponse(result=str(result.raw_result))
+def reconnect() -> EmptyResult:
+    return mediator.send_and_wait_until_executed(Reconnect())
 
 
 @router.post('/disconnect')
-def disconnect() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(Disconnect())
-    return SBCommandResponse(result=str(result.raw_result))
+def disconnect() -> EmptyResult:
+    return mediator.send_and_wait_until_executed(Disconnect())
 
 
 @router.post('/is_connected')
-def is_connected() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(IsConnected())
-    return SBCommandResponse(result=str(result.raw_result))
+def is_connected() -> IsDriverConnectedResult:
+    return mediator.send_and_wait_until_executed(IsConnected())
 
 
 @router.post('/uc_gui_handle_captcha')
-def uc_gui_handle_captcha() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(UCGUIHandleCaptcha())
-    return SBCommandResponse(result=str(result.raw_result))
+def uc_gui_handle_captcha() -> EmptyResult:
+    return mediator.send_and_wait_until_executed(UCGUIHandleCaptcha())
 
 
 @router.post('/uc_gui_click_captcha')
-def uc_gui_click_captcha() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(UCGUIClickCaptcha())
-    return SBCommandResponse(result=str(result.raw_result))
+def uc_gui_click_captcha() -> EmptyResult:
+    return mediator.send_and_wait_until_executed(UCGUIClickCaptcha())
 
 
 @router.post('/cdp_get')
-def cdp_get(request: RequestWithURL) -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPGet(request.url))
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_get(request: RequestWithURL) -> EmptyResult:
+    return mediator.send_and_wait_until_executed(CDPGet(request.url))
 
 
 @router.post('/cdp_click')
-def cdp_click(request: RequestWithCSSSelector) -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPClick(request.selector))
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_click(request: RequestWithCSSSelector) -> EmptyResult:
+    return mediator.send_and_wait_until_executed(CDPClick(request.selector))
 
 
 @router.post('/cdp_press_keys')
-def cdp_press_keys(request: RequestWithCSSSelectorAndText) -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPPressKeys(request.selector, request.text))
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_press_keys(request: RequestWithCSSSelectorAndText) -> EmptyResult:
+    return mediator.send_and_wait_until_executed(CDPPressKeys(request.selector, request.text))
 
 
 @router.post('/cdp_get_text')
-def cdp_get_text(request: RequestWithCSSSelector) -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPGetText(request.selector))
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_get_text(request: RequestWithCSSSelector) -> GetTextResult:
+    return mediator.send_and_wait_until_executed(CDPGetText(request.selector))
 
 
 @router.post('/cdp_is_element_visible')
-def cdp_is_element_visible(request: RequestWithCSSSelector) -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPIsElementVisible(request.selector))
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_is_element_visible(request: RequestWithCSSSelector) -> IsElementVisibleResult:
+    return mediator.send_and_wait_until_executed(CDPIsElementVisible(request.selector))
 
 
 @router.post('/cdp_get_current_url')
-def cdp_get_current_url() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPGetCurrentUrl())
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_get_current_url() -> GetCurrentURLResult:
+    return mediator.send_and_wait_until_executed(CDPGetCurrentUrl())
 
 
 @router.post('/cdp_get_page_source')
-def cdp_get_page_source() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPGetPageSource())
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_get_page_source() -> GetPageSourceResult:
+    return mediator.send_and_wait_until_executed(CDPGetPageSource())
 
 
 @router.post('/cdp_is_text_on_page')
-def cdp_is_text_on_page(request: RequestWithText) -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPFindElementByText(request.text))
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_is_text_on_page(request: RequestWithText) -> IsTextOnPageResult:
+    return mediator.send_and_wait_until_executed(CDPIsTextOnPage(request.text))
 
 
 @router.post('/cdp_gui_click_coordinates')
-def cdp_gui_click_coordinates(request: RequestWithCoordinates) -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPGUIClickCoordinates(request.x, request.y))
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_gui_click_coordinates(request: RequestWithCoordinates) -> EmptyResult:
+    return mediator.send_and_wait_until_executed(CDPGUIClickCoordinates(request.x, request.y))
 
 
 @router.post('/cdp_close_active_tab')
-def cdp_close_active_tab() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPCloseActiveTab())
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_close_active_tab() -> EmptyResult:
+    return mediator.send_and_wait_until_executed(CDPCloseActiveTab())
 
 
 @router.post('/cdp_switch_to_newest_tab')
-def cdp_switch_to_newest_tab() -> SBCommandResponse:
-    result = mediator.send_and_wait_until_executed(CDPSwitchToNewestTab())
-    return SBCommandResponse(result=str(result.raw_result))
+def cdp_switch_to_newest_tab() -> EmptyResult:
+    return mediator.send_and_wait_until_executed(CDPSwitchToNewestTab())
 
 
 @router.get('/locate_on_screen/{image_name}')

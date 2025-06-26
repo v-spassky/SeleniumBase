@@ -23,10 +23,6 @@ class RequestWithCoordinates(BaseModel):
     y: int
 
 
-class SBCommandResponse(BaseModel):
-    result: str
-
-
 class ImageLocation(BaseModel):
     located: bool
     x: int | None

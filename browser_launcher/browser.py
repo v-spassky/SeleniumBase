@@ -22,5 +22,5 @@ def run_seleniumbase():
                 mediator.notify_done(command_result)
             except Exception as error:
                 print(f'Error executing command: {error}')
-                command_result = SBCommandResult.error()
+                command_result = SBCommandResult.error(message=str(error))
                 mediator.notify_done(command_result)

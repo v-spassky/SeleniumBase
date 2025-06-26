@@ -1,18 +1,46 @@
 from abc import ABC, abstractmethod
 
+from pydantic import BaseModel
 from seleniumbase import SB
 
 
-class SBCommandResult:
-    def __init__(self, raw_result) -> None:
-        self.raw_result = raw_result
+class SBCommandResult(BaseModel):
 
     @classmethod
-    def error(cls) -> 'SBCommandResult':
-        return cls('error')
+    def error(cls, message: str) -> 'SBCommandResult':
+        return ErrorResult(message=message)
 
-    def __repr__(self) -> str:
-        return f'SBCommandResult("{self.raw_result}")'
+
+class ErrorResult(SBCommandResult):
+    message: str
+
+
+class EmptyResult(SBCommandResult):
+    ...
+
+
+class IsDriverConnectedResult(SBCommandResult):
+    is_connected: bool
+
+
+class GetTextResult(SBCommandResult):
+    text: str | None
+
+
+class IsElementVisibleResult(SBCommandResult):
+    is_visible: bool
+
+
+class GetCurrentURLResult(SBCommandResult):
+    url: str
+
+
+class GetPageSourceResult(SBCommandResult):
+    page_source: str
+
+
+class IsTextOnPageResult(SBCommandResult):
+    is_found: bool
 
 
 class SBCommand(ABC):
@@ -30,8 +58,8 @@ class ActivateCDPMode(SBCommand):
         self.url = url
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.activate_cdp_mode(self.url)
-        return SBCommandResult(result)
+        sb.activate_cdp_mode(self.url)
+        return EmptyResult()
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}("{self.url}")'
@@ -40,43 +68,43 @@ class ActivateCDPMode(SBCommand):
 class Connect(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.connect()
-        return SBCommandResult(result)
+        sb.connect()
+        return EmptyResult()
 
 
 class Reconnect(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.reconnect()
-        return SBCommandResult(result)
+        sb.reconnect()
+        return EmptyResult()
 
 
 class Disconnect(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.disconnect()
-        return SBCommandResult(result)
+        sb.disconnect()
+        return EmptyResult()
 
 
 class IsConnected(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.is_connected()
-        return SBCommandResult(result)
+        is_connected = sb.is_connected()
+        return IsDriverConnectedResult(is_connected)
 
 
 class UCGUIHandleCaptcha(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.uc_gui_handle_captcha()
-        return SBCommandResult(result)
+        sb.uc_gui_handle_captcha()
+        return EmptyResult()
 
 
 class UCGUIClickCaptcha(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.uc_gui_click_captcha()
-        return SBCommandResult(result)
+        sb.uc_gui_click_captcha()
+        return EmptyResult()
 
 
 class CDPGet(SBCommand):
@@ -85,8 +113,8 @@ class CDPGet(SBCommand):
         self.url = url
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.cdp.get(self.url)
-        return SBCommandResult(result)
+        sb.cdp.get(self.url)
+        return EmptyResult()
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}("{self.url}")'
@@ -98,8 +126,8 @@ class CDPClick(SBCommand):
         self.selector = selector
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.cdp.click(self.selector)
-        return SBCommandResult(result)
+        sb.cdp.click(self.selector)
+        return EmptyResult()
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}("{self.selector}")'
@@ -112,8 +140,8 @@ class CDPGUIClickCoordinates(SBCommand):
         self.y = y
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.cdp.gui_click_x_y(self.x, self.y)
-        return SBCommandResult(result)
+        sb.cdp.gui_click_x_y(self.x, self.y)
+        return EmptyResult()
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}({self.x}, {self.y})'
@@ -126,8 +154,8 @@ class CDPPressKeys(SBCommand):
         self.text = text
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.cdp.press_keys(self.selector, self.text)
-        return SBCommandResult(result)
+        sb.cdp.press_keys(self.selector, self.text)
+        return EmptyResult()
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}("{self.selector}", "{self.text}")'
@@ -139,8 +167,8 @@ class CDPGetText(SBCommand):
         self.selector = selector
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result =  sb.cdp.get_text(self.selector)
-        return SBCommandResult(result)
+        text = sb.cdp.get_text(self.selector)
+        return GetTextResult(text=text)
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}("{self.selector}")'
@@ -152,8 +180,8 @@ class CDPIsElementVisible(SBCommand):
         self.selector = selector
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.cdp.is_element_visible(self.selector)
-        return SBCommandResult(result)
+        is_visible = sb.cdp.is_element_visible(self.selector)
+        return IsElementVisibleResult(is_visible=is_visible)
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}("{self.selector}")'
@@ -162,28 +190,28 @@ class CDPIsElementVisible(SBCommand):
 class CDPGetCurrentUrl(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.cdp.get_current_url()
-        return SBCommandResult(result)
+        url = sb.cdp.get_current_url()
+        return GetCurrentURLResult(url=url)
 
 
 class CDPGetPageSource(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.cdp.get_page_source()
-        return SBCommandResult(result)
+        page_source = sb.cdp.get_page_source()
+        return GetPageSourceResult(page_source=page_source)
 
 
-class CDPFindElementByText(SBCommand):
+class CDPIsTextOnPage(SBCommand):
 
     def __init__(self, text: str) -> None:
         self.text = text
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
         try:
-            result = sb.cdp.find_element_by_text(self.text, timeout=0.1)
+            _element = sb.cdp.find_element_by_text(self.text, timeout=0.1)
+            return IsTextOnPageResult(is_found=True)
         except Exception:
-            result = None
-        return SBCommandResult(result)
+            return IsTextOnPageResult(is_found=False)
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}("{self.text}")'
@@ -192,12 +220,12 @@ class CDPFindElementByText(SBCommand):
 class CDPCloseActiveTab(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.cdp.close_active_tab()
-        return SBCommandResult(result)
+        sb.cdp.close_active_tab()
+        return EmptyResult()
 
 
 class CDPSwitchToNewestTab(SBCommand):
 
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
-        result = sb.cdp.switch_to_newest_tab()
-        return SBCommandResult(result)
+        sb.cdp.switch_to_newest_tab()
+        return EmptyResult()
