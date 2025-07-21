@@ -229,3 +229,10 @@ class CDPSwitchToNewestTab(SBCommand):
     def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
         sb.cdp.switch_to_newest_tab()
         return EmptyResult()
+
+
+class CDPClearCookies(SBCommand):
+
+    def execute_on_sb_driver(self, sb: SB) -> SBCommandResult:
+        sb.cdp.clear_cookies()
+        return EmptyResult()

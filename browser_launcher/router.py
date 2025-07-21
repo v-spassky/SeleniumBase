@@ -3,6 +3,7 @@ from fastapi import APIRouter
 
 from command import (
     ActivateCDPMode,
+    CDPClearCookies,
     CDPClick,
     CDPCloseActiveTab,
     CDPIsElementVisible,
@@ -128,6 +129,11 @@ def cdp_close_active_tab() -> EmptyResult:
 @router.post('/cdp_switch_to_newest_tab')
 def cdp_switch_to_newest_tab() -> EmptyResult:
     return mediator.send_and_wait_until_executed(CDPSwitchToNewestTab())
+
+
+@router.post('/cdp_clear_cookies')
+def cdp_clear_cookies() -> EmptyResult:
+    return mediator.send_and_wait_until_executed(CDPClearCookies())
 
 
 @router.get('/locate_on_screen/{image_name}')
